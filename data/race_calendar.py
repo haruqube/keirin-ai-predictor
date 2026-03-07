@@ -1,4 +1,4 @@
-"""開催カレンダー取得"""
+"""開催カレンダー取得（netkeirin）"""
 
 import re
 import time
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 
-from config import KEIRIN_JP_BASE_URL, REQUEST_HEADERS, SCRAPE_DELAY
+from config import NETKEIRIN_BASE_URL, REQUEST_HEADERS, SCRAPE_DELAY, VELODROME_CODES
 
 
 def get_today_and_tomorrow_dates() -> list[str]:
@@ -18,24 +18,47 @@ def get_today_and_tomorrow_dates() -> list[str]:
 
 
 def get_kaisai_dates(year: int, month: int) -> list[str]:
-    """keirin.jpカレンダーから開催日一覧を取得"""
-    url = f"{KEIRIN_JP_BASE_URL}/race/calendar?date={year}-{month:02d}-01"
-    time.sleep(SCRAPE_DELAY)
-    try:
-        resp = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
-        resp.encoding = "utf-8"
-        soup = BeautifulSoup(resp.text, "lxml")
+    """指定年月の開催日一覧を取得
 
-        dates = []
-        # カレンダーのリンクから日付を抽出
-        for link in soup.select("a[href*='date=']"):
-            href = link.get("href", "")
-            m = re.search(r"date=(\d{4}-\d{2}-\d{2})", href)
-            if m:
-                date_str = m.group(1).replace("-", "")
-                if date_str not in dates and date_str.startswith(f"{year}{month:02d}"):
-                    dates.append(date_str)
+    netkeirinの各競輪場ページからrace_idに含まれる日付を収集する。
+    """
+    dates = set()
+    # 全競輪場を回すのはコストが高いので、主要場のみチェック
+    # race_idのパターン: YYYYMMDD + jyo_cd + RR
+    target_prefix = f"{year}{month:02d}"
 
-        return sorted(dates)
-    except Exception:
-        return []
+    for jyo_cd in VELODROME_CODES:
+        url = f"{NETKEIRIN_BASE_URL}/race/course/?jyo_cd={jyo_cd}"
+        time.sleep(SCRAPE_DELAY)
+        try:
+            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
+            resp.encoding = "utf-8"
+            # race_idからYYYYMMDD部分を抽出
+            for m in re.finditer(r"race_id=(\d{8})" + re.escape(jyo_cd) + r"\d{2}", resp.text):
+                date_str = m.group(1)
+                if date_str.startswith(target_prefix):
+                    dates.add(date_str)
+        except Exception:
+            continue
+
+    return sorted(dates)
+
+
+def get_active_velodromes(date: str) -> list[str]:
+    """指定日に開催中の競輪場コードを返す
+
+    全場のレース一覧ページを確認し、該当日のrace_idが存在する場をリストアップ。
+    """
+    active = []
+    for jyo_cd in VELODROME_CODES:
+        url = f"{NETKEIRIN_BASE_URL}/race/course/?jyo_cd={jyo_cd}"
+        time.sleep(SCRAPE_DELAY)
+        try:
+            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
+            resp.encoding = "utf-8"
+            pattern = f"race_id={date}{jyo_cd}"
+            if pattern in resp.text:
+                active.append(jyo_cd)
+        except Exception:
+            continue
+    return active

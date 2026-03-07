@@ -22,7 +22,7 @@ X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET", "")
 
 # ── スクレイピング ──
 SCRAPE_DELAY = 1.5  # 秒
-KEIRIN_JP_BASE_URL = "https://keirin.jp"
+NETKEIRIN_BASE_URL = "https://keirin.netkeiba.com"
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
@@ -49,7 +49,7 @@ LGBM_EARLY_STOPPING_ROUNDS = 50
 NOTE_PRICE_NORMAL = 200
 NOTE_PRICE_G1 = 500
 
-# ── 競輪場コード (keirin.jp) ──
+# ── 競輪場コード (netkeirin jyo_cd) ──
 VELODROME_CODES = {
     "11": "函館", "12": "青森", "13": "いわき平",
     "21": "弥彦", "22": "前橋", "23": "取手", "24": "宇都宮", "25": "大宮",
@@ -82,8 +82,6 @@ BANK_LENGTH = {
     "前橋": 335, "小田原": 333, "伊東": 333, "松阪": 333,
     "奈良": 333, "防府": 333, "小松島": 333, "高知": 333,
     "松山": 333, "佐世保": 333, "熊本": 333,
-    # 400m (default)
     "大宮": 500, "立川": 400, "京王閣": 400,
-    # 500m
 }
 DEFAULT_BANK_LENGTH = 400

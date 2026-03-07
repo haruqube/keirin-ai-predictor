@@ -1,4 +1,9 @@
-"""keirin.jpスクレイパー（キャッシュ付き）"""
+"""netkeirinスクレイパー（キャッシュ付き）
+
+データソース: https://keirin.netkeiba.com
+race_id形式: YYYYMMDD + 競輪場コード(2桁) + レース番号(2桁) = 12桁
+  例: 202603057511 = 2026/03/05, 松山(75), 11R
+"""
 
 import json
 import logging
@@ -12,7 +17,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from config import (
-    CACHE_DIR, KEIRIN_JP_BASE_URL,
+    CACHE_DIR, NETKEIRIN_BASE_URL,
     REQUEST_HEADERS, SCRAPE_DELAY, VELODROME_CODES,
 )
 
@@ -20,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class KeirinScraper:
-    """keirin.jpからレース情報・結果をスクレイピング"""
+    """netkeirinからレース情報・結果をスクレイピング"""
 
     def __init__(self):
         self.session = requests.Session()
@@ -55,43 +60,60 @@ class KeirinScraper:
         cache_file = CACHE_DIR / f"{key}.json"
         cache_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def scrape_race_list(self, date: str) -> list[str]:
-        """指定日のレースID一覧を取得
+    def scrape_race_list_for_velodrome(self, jyo_cd: str, date: str) -> list[str]:
+        """指定競輪場・日付のレースID一覧を取得
 
-        keirin.jpのレース一覧ページから各レースのIDを抽出。
+        jyo_cd: 競輪場コード (e.g. "75")
         date: YYYYMMDD形式
+        戻り値: race_idのリスト
         """
-        cache_key = f"race_list_{date}"
+        cache_key = f"race_list_{jyo_cd}_{date}"
         cached = self._get_json_cache(cache_key)
-        if cached:
+        if cached is not None:
             return cached
 
-        # keirin.jp の開催一覧ページ
-        formatted_date = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
-        url = f"{KEIRIN_JP_BASE_URL}/race/schedule?date={formatted_date}"
+        url = f"{NETKEIRIN_BASE_URL}/race/course/?jyo_cd={jyo_cd}"
         html = self._get(url)
-        soup = BeautifulSoup(html, "lxml")
 
-        race_ids = []
-        # レース詳細へのリンクからrace_idを抽出
-        for link in soup.select("a[href*='/race/result'], a[href*='/race/detail']"):
-            href = link.get("href", "")
-            m = re.search(r"race_id=(\d+)", href)
-            if m and m.group(1) not in race_ids:
-                race_ids.append(m.group(1))
+        # race_idパターン: YYYYMMDD + jyo_cd + RR
+        pattern = re.compile(rf"race_id=({re.escape(date)}{re.escape(jyo_cd)}\d{{2}})")
+        race_ids = sorted(set(pattern.findall(html)))
 
-        race_ids = sorted(set(race_ids))
         self._set_json_cache(cache_key, race_ids)
         return race_ids
 
+    def scrape_race_list(self, date: str) -> list[str]:
+        """指定日の全競輪場のレースID一覧を取得
+
+        date: YYYYMMDD形式
+        """
+        cache_key = f"race_list_all_{date}"
+        cached = self._get_json_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        all_ids = []
+        for jyo_cd in VELODROME_CODES:
+            ids = self.scrape_race_list_for_velodrome(jyo_cd, date)
+            all_ids.extend(ids)
+
+        all_ids = sorted(set(all_ids))
+        self._set_json_cache(cache_key, all_ids)
+        return all_ids
+
     def scrape_race_result(self, race_id: str) -> dict:
-        """レース結果ページをパース"""
+        """レース結果ページをパース
+
+        URL: /race/result/?race_id=XXXXXXXXXXXXXX
+        テーブル列: 着, 枠番, 車番, 選手名, 着差, 上り, 決, SB
+        選手リンク: /db/profile/?id=XXXXX
+        """
         cache_key = f"race_result_{race_id}"
         cached = self._get_json_cache(cache_key)
         if cached:
             return cached
 
-        url = f"{KEIRIN_JP_BASE_URL}/race/result?race_id={race_id}"
+        url = f"{NETKEIRIN_BASE_URL}/race/result/?race_id={race_id}"
         html = self._get(url)
         soup = BeautifulSoup(html, "lxml")
 
@@ -104,13 +126,19 @@ class KeirinScraper:
         return race_info
 
     def scrape_race_entry(self, race_id: str) -> dict:
-        """出走表ページをパース（レース前）"""
+        """出走表ページをパース
+
+        URL: /race/entry/?race_id=XXXXXXXXXXXXXX
+        Fixed table (RaceCard_Simple_Table_Fixed): 枠, 車, 予想印
+        Static table (RaceCard_Simple_Table_Static): 本紙, 選手名, 競走得点,
+            脚質, S, B, 逃げ, まくり, 差し, マーク, 1着~着外, 勝率~3連対率, ギヤ倍数, コメント
+        """
         cache_key = f"race_entry_{race_id}"
         cached = self._get_json_cache(cache_key)
         if cached:
             return cached
 
-        url = f"{KEIRIN_JP_BASE_URL}/race/detail?race_id={race_id}"
+        url = f"{NETKEIRIN_BASE_URL}/race/entry/?race_id={race_id}"
         html = self._get(url)
         soup = BeautifulSoup(html, "lxml")
 
@@ -123,77 +151,122 @@ class KeirinScraper:
         return race_info
 
     def _parse_race_info(self, soup: BeautifulSoup, race_id: str) -> dict:
-        """レース情報をパース"""
+        """レース情報をパース（結果ページ・出走表共通）"""
         info = {"race_id": race_id}
 
-        # レース名
-        title = soup.select_one("h3, .race-name, .raceName")
-        info["race_name"] = title.get_text(strip=True) if title else ""
+        # race_idから基本情報を抽出: YYYYMMDD(8) + JJ(2) + RR(2) = 12桁
+        info["date"] = f"{race_id[:4]}-{race_id[4:6]}-{race_id[6:8]}"
+        jyo_cd = race_id[8:10]
+        info["velodrome_code"] = jyo_cd
+        info["velodrome"] = VELODROME_CODES.get(jyo_cd, jyo_cd)
+        info["race_number"] = int(race_id[10:12]) if len(race_id) >= 12 else None
 
-        # レース番号
-        rnum_el = soup.select_one(".race-number, .raceNumber")
-        if rnum_el:
-            m = re.search(r"(\d+)", rnum_el.get_text())
-            info["race_number"] = int(m.group(1)) if m else None
+        # ページ全文からレース情報を抽出
+        page_text = soup.get_text(" ", strip=True)
+
+        # レース名: "Ｓ級 一次予選" のようなパターン
+        race_name = ""
+        # RaceList_NameBox_inner内の最初のテキスト要素を取得
+        name_inner = soup.select_one(".RaceList_NameBox_inner")
+        if name_inner:
+            # 最初の意味のあるテキストを取得
+            for child in name_inner.stripped_strings:
+                race_name = child
+                break
+        if not race_name:
+            name_box = soup.select_one(".RaceName, .RaceList_NameBox")
+            if name_box:
+                race_name = name_box.get_text(strip=True)[:50]
+        info["race_name"] = race_name
+
+        # 距離・周回数: "2025m 5周" パターンをpage全体から検索
+        d_match = re.search(r"(\d{3,4})m\s*(\d+)周", page_text)
+        if d_match:
+            info["distance"] = int(d_match.group(1))
+            info["laps"] = int(d_match.group(2))
         else:
-            info["race_number"] = None
+            d_match2 = re.search(r"(\d{3,4})m", page_text)
+            info["distance"] = int(d_match2.group(1)) if d_match2 else None
+            info["laps"] = None
 
-        # 競輪場
-        velodrome_el = soup.select_one(".velodrome, .placeName")
-        info["velodrome"] = velodrome_el.get_text(strip=True) if velodrome_el else ""
-
-        # グレード
+        # グレード: GIII, GII, GI, GP, FI, FII をページテキストから検索
         info["grade"] = None
-        grade_el = soup.select_one("[class*='grade'], [class*='Grade']")
-        if grade_el:
-            text = grade_el.get_text(strip=True)
-            for g in ["GP", "G1", "G2", "G3", "F1", "F2"]:
-                if g in text:
-                    info["grade"] = g
-                    break
+        grade_patterns = [
+            (r"GP|グランプリ", "GP"),
+            (r"GI(?!I)|ＧＩ(?!Ｉ)", "G1"),
+            (r"GII(?!I)|ＧＩＩ(?!Ｉ)", "G2"),
+            (r"GIII|ＧＩＩＩgr", "G3"),
+        ]
+        for pattern, grade in grade_patterns:
+            if re.search(pattern, page_text):
+                info["grade"] = grade
+                break
+        if not info["grade"]:
+            if "FII" in page_text or "ＦＩＩ" in page_text:
+                info["grade"] = "F2"
+            elif "FI" in page_text or "ＦＩ" in page_text:
+                info["grade"] = "F1"
 
         return info
 
     def _parse_result_table(self, soup: BeautifulSoup, race_id: str) -> list[dict]:
-        """レース結果テーブルをパース"""
+        """レース結果テーブルをパース
+
+        netkeirin結果テーブル列:
+        [0]着 [1]枠番 [2]車番 [3]選手名(+リンク) [4]着差 [5]上り [6]決 [7]SB
+        選手リンク: /db/profile/?id=XXXXX → player_id
+        """
         results = []
 
-        # テーブルを探す（keirin.jpの構造に合わせる）
-        table = soup.select_one("table.resultTable, table.raceResult, table")
-        if not table:
-            return results
+        # TableSlideArea内のテーブルを探す
+        table_area = soup.select_one(".TableSlideArea")
+        if not table_area:
+            # フォールバック: 最初のtableを試す
+            table_area = soup
 
-        for row in table.select("tbody tr, tr"):
+        for row in table_area.select("tbody tr, table tr"):
             cells = row.select("td")
-            if len(cells) < 5:
+            if len(cells) < 4:
                 continue
+
             try:
-                # 着順が数値でない行はスキップ
                 pos_text = cells[0].get_text(strip=True)
-                if not pos_text.isdigit():
+                if not pos_text or not pos_text[0].isdigit():
                     continue
 
-                # 選手IDをリンクから抽出
-                rider_link = row.select_one("a[href*='player'], a[href*='rider']")
+                # 選手ID: player_img_XXXXX or /db/profile/?id=XXXXX
                 rider_id = ""
-                if rider_link:
-                    m = re.search(r"(?:player|rider)[_=]?(\d+)", rider_link.get("href", ""))
+                img_el = row.select_one("[id^='player_img_']")
+                if img_el:
+                    m = re.search(r"player_img_(\d+)", img_el.get("id", ""))
                     rider_id = m.group(1) if m else ""
+                if not rider_id:
+                    link = row.select_one("a[href*='/db/profile/']")
+                    if link:
+                        m = re.search(r"id=(\d+)", link.get("href", ""))
+                        rider_id = m.group(1) if m else ""
+
+                # 選手名セル(Player_Info): "晝田宗一郎岡山 26歳115期 Ｓ2"
+                player_cell = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+                parsed = self._parse_player_info(player_cell)
+                clean_name = parsed["name"]
+                prefecture = parsed["prefecture"]
+
+                # 着順テキストから数値のみ抽出 ("1着" -> 1)
+                finish_pos = self._safe_int(pos_text)
 
                 result = {
                     "race_id": race_id,
                     "rider_id": rider_id,
-                    "finish_position": self._safe_int(pos_text),
+                    "finish_position": finish_pos,
                     "frame_number": self._safe_int(cells[1].get_text(strip=True)) if len(cells) > 1 else None,
                     "bike_number": self._safe_int(cells[2].get_text(strip=True)) if len(cells) > 2 else None,
-                    "rider_name": cells[3].get_text(strip=True) if len(cells) > 3 else "",
-                    "class": cells[4].get_text(strip=True) if len(cells) > 4 else None,
-                    "prefecture": cells[5].get_text(strip=True) if len(cells) > 5 else None,
-                    "gear_ratio": self._safe_float(cells[6].get_text(strip=True)) if len(cells) > 6 else None,
-                    "finish_time": cells[7].get_text(strip=True) if len(cells) > 7 else None,
-                    "margin": cells[8].get_text(strip=True) if len(cells) > 8 else None,
-                    "odds": self._safe_float(cells[9].get_text(strip=True)) if len(cells) > 9 else None,
-                    "popularity": self._safe_int(cells[10].get_text(strip=True)) if len(cells) > 10 else None,
+                    "rider_name": clean_name,
+                    "class": parsed["class"],
+                    "prefecture": prefecture,
+                    "margin": cells[4].get_text(strip=True) if len(cells) > 4 else None,
+                    "last_1lap": self._safe_float(cells[5].get_text(strip=True)) if len(cells) > 5 else None,
+                    "winning_move": cells[6].get_text(strip=True) if len(cells) > 6 else None,
                 }
                 results.append(result)
             except (IndexError, ValueError) as e:
@@ -203,35 +276,92 @@ class KeirinScraper:
         return results
 
     def _parse_entry_table(self, soup: BeautifulSoup, race_id: str) -> list[dict]:
-        """出走表テーブルをパース"""
+        """出走表テーブルをパース
+
+        netkeirinの出走表は2つのRaceCard_Simple_Tableがある。
+        2番目のテーブル（詳細版）を使用:
+        列: 枠, 車, チェック, 本紙, 選手名(Player_Info), 競走得点, 脚質, S, B,
+            逃げ, まくり, 差し, マーク, 1着, 2着, 3着, 着外, 勝率, 2連対率, 3連対率, ギヤ倍数, コメント
+        """
         entries = []
-        table = soup.select_one("table.entryTable, table.shutubaTable, table")
-        if not table:
+
+        tables = soup.select("table.RaceCard_Simple_Table")
+        if len(tables) < 2:
             return entries
 
-        for row in table.select("tbody tr, tr"):
+        # 2番目のテーブル（詳細版）を使用
+        detail_table = tables[1]
+
+        for row in detail_table.select("tbody tr, tr"):
             cells = row.select("td")
-            if len(cells) < 5:
+            if len(cells) < 6:
                 continue
+
             try:
-                rider_link = row.select_one("a[href*='player'], a[href*='rider']")
+                # 選手IDを抽出
+                # 出走表では img src="...players/player_XXXXX.jpg" から取得
                 rider_id = ""
-                if rider_link:
-                    m = re.search(r"(?:player|rider)[_=]?(\d+)", rider_link.get("href", ""))
+                img_el = row.select_one("img[src*='player_']")
+                if img_el:
+                    m = re.search(r"player_(\d+)", img_el.get("src", ""))
                     rider_id = m.group(1) if m else ""
+                if not rider_id:
+                    img_el2 = row.select_one("[id^='player_img_'], [id^='entry_player_photo_']")
+                    if img_el2:
+                        m = re.search(r"player_(\d+)", img_el2.get("src", "") or img_el2.get("id", ""))
+                        rider_id = m.group(1) if m else ""
+                if not rider_id:
+                    link = row.select_one("a[href*='/db/profile/']")
+                    if link:
+                        m = re.search(r"id=(\d+)", link.get("href", ""))
+                        rider_id = m.group(1) if m else ""
 
                 if not rider_id:
                     continue
+
+                # Player_Infoセル (index 4)
+                # "ヨシダタクヤ吉田拓矢お気に入り選手茨城 30歳107期 ＳＳ"
+                player_text = cells[4].get_text(strip=True) if len(cells) > 4 else ""
+                # "お気に入り選手" を除去
+                player_text = player_text.replace("お気に入り選手", " ")
+                # カタカナ読みを除去（先頭のカタカナ）
+                player_text = re.sub(r"^[ァ-ヴー]+", "", player_text)
+
+                parsed = self._parse_player_info(player_text)
+
+                # 競走得点 (index 5)
+                score = self._safe_float(cells[5].get_text(strip=True)) if len(cells) > 5 else None
+                # 脚質 (index 6)
+                leg_type = cells[6].get_text(strip=True) if len(cells) > 6 else None
+
+                # S, B, 逃げ, まくり, 差し, マーク (index 7-12)
+                # 1着, 2着, 3着, 着外 (index 13-16)
+                # 勝率, 2連対率, 3連対率 (index 17-19)
+                win_rate = self._safe_float(cells[17].get_text(strip=True)) if len(cells) > 17 else None
+                place_rate = self._safe_float(cells[18].get_text(strip=True)) if len(cells) > 18 else None
+                top3_rate = self._safe_float(cells[19].get_text(strip=True)) if len(cells) > 19 else None
+                # ギヤ倍数 (index 20)
+                gear_ratio = self._safe_float(cells[20].get_text(strip=True)) if len(cells) > 20 else None
+                # コメント (index 21, 最後)
+                comment = cells[21].get_text(strip=True) if len(cells) > 21 else ""
 
                 entry = {
                     "race_id": race_id,
                     "rider_id": rider_id,
                     "frame_number": self._safe_int(cells[0].get_text(strip=True)),
-                    "bike_number": self._safe_int(cells[1].get_text(strip=True)) if len(cells) > 1 else None,
-                    "rider_name": cells[2].get_text(strip=True) if len(cells) > 2 else "",
-                    "class": cells[3].get_text(strip=True) if len(cells) > 3 else None,
-                    "prefecture": cells[4].get_text(strip=True) if len(cells) > 4 else None,
-                    "gear_ratio": self._safe_float(cells[5].get_text(strip=True)) if len(cells) > 5 else None,
+                    "bike_number": self._safe_int(cells[1].get_text(strip=True)),
+                    "rider_name": parsed["name"],
+                    "class": parsed["class"],
+                    "prefecture": parsed["prefecture"],
+                    "age": parsed["age"],
+                    "period": parsed["period"],
+                    "avg_competition_score": score,
+                    "leg_type": leg_type,
+                    "win_rate": win_rate,
+                    "place_rate": place_rate,
+                    "top3_rate": top3_rate,
+                    "gear_ratio": gear_ratio,
+                    "comment": comment,
                 }
                 entries.append(entry)
             except (IndexError, ValueError) as e:
@@ -241,6 +371,54 @@ class KeirinScraper:
         return entries
 
     # ── ユーティリティ ──
+
+    _PREF_PATTERN = re.compile(
+        r"(北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|"
+        r"埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野|"
+        r"岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|"
+        r"鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|"
+        r"佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)"
+    )
+    _CLASS_PATTERN = re.compile(r"(SS|Ｓ[Ｓ12]|S[S12]|Ａ[123]|A[123])")
+
+    @classmethod
+    def _parse_player_info(cls, text: str) -> dict:
+        """Player_Infoセルのテキストをパース
+
+        入力例: "晝田宗一郎岡山 26歳115期 Ｓ2"
+        """
+        result = {"name": "", "prefecture": None, "class": None, "age": None, "period": None}
+
+        if not text:
+            return result
+
+        # 級班
+        class_match = cls._CLASS_PATTERN.search(text)
+        if class_match:
+            raw_class = class_match.group(1)
+            # 全角→半角正規化
+            result["class"] = raw_class.replace("Ｓ", "S").replace("Ａ", "A")
+
+        # 年齢
+        age_match = re.search(r"(\d{2,3})歳", text)
+        result["age"] = int(age_match.group(1)) if age_match else None
+
+        # 期
+        period_match = re.search(r"(\d{2,3})期", text)
+        result["period"] = int(period_match.group(1)) if period_match else None
+
+        # 府県: 名前の直後に続く
+        pref_match = cls._PREF_PATTERN.search(text)
+        result["prefecture"] = pref_match.group(1) if pref_match else None
+
+        # 名前: 府県の前の部分 or スペースまで
+        if pref_match:
+            result["name"] = text[:pref_match.start()].strip()
+        else:
+            # スペースで区切って最初の部分
+            result["name"] = text.split()[0] if text.split() else text
+
+        return result
 
     @staticmethod
     def _safe_int(text: str) -> int | None:
@@ -252,6 +430,6 @@ class KeirinScraper:
     @staticmethod
     def _safe_float(text: str) -> float | None:
         try:
-            return float(text.replace(",", ""))
+            return float(text.replace(",", "").replace("%", "").strip())
         except (ValueError, TypeError):
             return None
