@@ -247,7 +247,9 @@ class KeirinScraper:
                         rider_id = m.group(1) if m else ""
 
                 # 選手名セル(Player_Info): "晝田宗一郎岡山 26歳115期 Ｓ2"
+                # /db/result/ では "お気に入り選手" テキストが含まれる場合がある
                 player_cell = cells[3].get_text(strip=True) if len(cells) > 3 else ""
+                player_cell = player_cell.replace("お気に入り選手", " ")
                 parsed = self._parse_player_info(player_cell)
                 clean_name = parsed["name"]
                 prefecture = parsed["prefecture"]

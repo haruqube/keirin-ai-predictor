@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .env
 db/keirin.db
+db/keirin.db-shm
+db/keirin.db-wal
 data/cache/
 results/
 *.pkl
