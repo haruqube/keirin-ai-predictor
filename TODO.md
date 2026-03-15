@@ -5,7 +5,7 @@
 - [ ] 予測スクリプトの動作確認
 - [ ] X APIキー設定・投稿テスト
 - [ ] note.com記事生成テンプレート作成
-- [ ] weekly_pipeline.py 作成
+- [x] weekly_pipeline.py 作成
 
 ## 完了
 - [x] プロジェクト構造作成
