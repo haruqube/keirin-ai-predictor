@@ -1,0 +1,9 @@
+{{ date_display }} AI競輪予想
+
+{{ venue_display }} 注目レース：
+{% for race in top_races %}{{ race.velodrome }}{{ race.race_number }}R {{ race.honmei_mark }} {{ race.honmei_bike }}番{{ race.honmei_name }}
+{% endfor %}
+詳細分析はnote記事で
+{{ note_url }}
+
+#競輪予想 #AI予想 #競輪

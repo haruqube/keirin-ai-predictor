@@ -144,8 +144,32 @@ class KeirinScraper:
 
         race_info = self._parse_race_info(soup, race_id)
         entries = self._parse_entry_table(soup, race_id)
+
+        # ライン並び予想をパース
+        line_data = self._parse_line_formation(soup)
+        # 車番→ライン情報のマッピングをentriesに付与
+        bike_to_line = {}
+        for line_group_idx, members in enumerate(line_data, 1):
+            line_group = str(line_group_idx)
+            for pos, member in enumerate(members):
+                bike_num = member["bike_number"]
+                if pos == 0:
+                    role = "自力"
+                elif pos == 1:
+                    role = "番手"
+                else:
+                    role = "3番手"
+                bike_to_line[bike_num] = {"line_group": line_group, "line_role": role}
+
+        for entry in entries:
+            bn = entry.get("bike_number")
+            if bn and bn in bike_to_line:
+                entry["line_group"] = bike_to_line[bn]["line_group"]
+                entry["line_role"] = bike_to_line[bn]["line_role"]
+
         race_info["entries"] = entries
         race_info["rider_count"] = len(entries)
+        race_info["line_formation"] = line_data
 
         self._set_json_cache(cache_key, race_info)
         return race_info
@@ -371,6 +395,49 @@ class KeirinScraper:
                 continue
 
         return entries
+
+    # ── ライン並び予想 ──
+
+    @staticmethod
+    def _parse_line_formation(soup: BeautifulSoup) -> list[list[dict]]:
+        """DeployYosoセクションからライン並びをパース
+
+        戻り値: [[{"bike_number": 7, "name": "深谷知"}, ...], [...], ...]
+        各リストが1つのライン。ライン内の順序が自力→番手→3番手。
+        """
+        deploy = soup.select_one(".DeployYoso")
+        if not deploy:
+            return []
+
+        boxes = deploy.select(".DeployInBox")
+        if not boxes:
+            return []
+
+        lines = []
+        current_line = []
+
+        for box in boxes:
+            sep = box.select_one(".WakuSeparat")
+            num_el = box.select_one(".Shaban_Num")
+
+            if sep and not num_el:
+                # セパレータ = ラインの区切り
+                if current_line:
+                    lines.append(current_line)
+                    current_line = []
+            elif num_el:
+                try:
+                    bike_num = int(num_el.get_text(strip=True))
+                except ValueError:
+                    continue
+                name_el = box.select_one(".Name")
+                name = name_el.get_text(strip=True) if name_el else ""
+                current_line.append({"bike_number": bike_num, "name": name})
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines
 
     # ── ユーティリティ ──
 

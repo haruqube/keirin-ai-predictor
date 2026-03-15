@@ -24,14 +24,21 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             "rider_race_count",
             "rider_avg_odds",
             "rider_avg_popularity",
+            # 上がりタイム特徴量
+            "rider_avg_last_1lap",
+            "rider_avg_last_1lap_recent5",
+            "rider_best_last_1lap",
+            # バンク相性
+            "rider_velodrome_win_rate",
+            "rider_velodrome_race_count",
         ]
 
     def build(self, race_id: str, rider_id: str, race_date: str) -> dict:
         conn = get_connection()
         try:
-            # 当該レース以前の全成績
+            # 当該レース以前の全成績（last_1lap追加）
             past = conn.execute("""
-                SELECT rr.finish_position, rr.odds, rr.popularity, rr.class
+                SELECT rr.finish_position, rr.odds, rr.popularity, rr.class, rr.last_1lap
                 FROM race_results rr
                 JOIN races r ON rr.race_id = r.race_id
                 WHERE rr.rider_id = ? AND r.date < ?
@@ -91,6 +98,43 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
 
             pop_vals = [r["popularity"] for r in past if r["popularity"]]
             feats["rider_avg_popularity"] = sum(pop_vals) / len(pop_vals) if pop_vals else 5.0
+
+            # 上がりタイム（last_1lap）
+            lap_vals = [r["last_1lap"] for r in past if r["last_1lap"] and r["last_1lap"] > 0]
+            if lap_vals:
+                feats["rider_avg_last_1lap"] = sum(lap_vals) / len(lap_vals)
+                feats["rider_best_last_1lap"] = min(lap_vals)
+            else:
+                feats["rider_avg_last_1lap"] = 0.0
+                feats["rider_best_last_1lap"] = 0.0
+
+            lap_recent5 = [r["last_1lap"] for r in recent5 if r["last_1lap"] and r["last_1lap"] > 0]
+            feats["rider_avg_last_1lap_recent5"] = sum(lap_recent5) / len(lap_recent5) if lap_recent5 else 0.0
+
+            # バンク相性
+            race = conn.execute(
+                "SELECT velodrome FROM races WHERE race_id = ?", (race_id,)
+            ).fetchone()
+            velodrome = race["velodrome"] if race else ""
+
+            if velodrome:
+                velo_past = conn.execute("""
+                    SELECT rr.finish_position
+                    FROM race_results rr
+                    JOIN races r ON rr.race_id = r.race_id
+                    WHERE rr.rider_id = ? AND r.date < ? AND r.velodrome = ?
+                      AND rr.finish_position IS NOT NULL
+                """, (rider_id, race_date, velodrome)).fetchall()
+                velo_total = len(velo_past)
+                feats["rider_velodrome_race_count"] = velo_total
+                if velo_total > 0:
+                    velo_wins = sum(1 for r in velo_past if r["finish_position"] == 1)
+                    feats["rider_velodrome_win_rate"] = velo_wins / velo_total
+                else:
+                    feats["rider_velodrome_win_rate"] = 0.0
+            else:
+                feats["rider_velodrome_win_rate"] = 0.0
+                feats["rider_velodrome_race_count"] = 0
 
             return feats
         finally:

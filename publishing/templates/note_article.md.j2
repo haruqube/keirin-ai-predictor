@@ -1,0 +1,42 @@
+# 【AI競輪予想】{{ date_display }} {{ venue_display }}
+
+> AI予測モデル（LightGBM LambdaRank）による競輪予想レポート
+
+---
+
+## 本日の予想サマリー
+
+| 項目 | 内容 |
+|------|------|
+| 対象日 | {{ date_display }} |
+| 開催場 | {{ venue_display }} |
+| 対象レース数 | {{ race_count }}R |
+| 先週的中率 | {{ last_week_accuracy }} |
+
+---
+
+{% for race in races %}
+## {{ race.velodrome }} {{ race.race_number }}R {% if race.race_name %}{{ race.race_name }}{% endif %}
+
+{% if race.grade %}**{{ race.grade }}** / {% endif %}{{ race.rider_count }}車立
+
+| 予想 | 車番 | 選手名 | 級班 | スコア |
+|------|------|--------|------|--------|
+{% for rider in race.riders %}| {{ rider.mark }} | {{ rider.bike_number }}番 | {{ rider.name }} | {{ rider.class }} | {{ "%.3f"|format(rider.score) }} |
+{% endfor %}
+
+{% if race.line_info %}**ライン構成:** {{ race.line_info }}{% endif %}
+
+---
+
+{% endfor %}
+
+## AI予測モデルについて
+
+本予想はLightGBM LambdaRankモデルを使用しています。
+- 学習データ: 2024年全レース（約7,000R）
+- 特徴量: 選手成績、上がりタイム、バンク相性、ライン構成など32項目
+- テストセット精度: Top1=38.4%, Top3=59.3%
+- ライン補正: グリッドサーチ最適化済み
+
+**免責事項:** 本記事はAIによる分析結果であり、車券購入は自己責任でお願いします。

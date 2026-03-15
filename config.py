@@ -28,21 +28,21 @@ REQUEST_HEADERS = {
 }
 
 # ── モデル ──
-TRAIN_YEARS = [2023, 2024]
+TRAIN_YEARS = [2024]
 TEST_YEARS = [2025]
 LGBM_PARAMS = {
     "objective": "lambdarank",
     "metric": "ndcg",
     "ndcg_eval_at": [1, 3],
-    "learning_rate": 0.05,
-    "num_leaves": 31,
-    "min_data_in_leaf": 20,
-    "feature_fraction": 0.8,
+    "learning_rate": 0.03,
+    "num_leaves": 15,
+    "min_data_in_leaf": 50,
+    "feature_fraction": 0.6,
     "bagging_fraction": 0.8,
     "bagging_freq": 5,
     "verbose": -1,
 }
-LGBM_NUM_BOOST_ROUND = 500
+LGBM_NUM_BOOST_ROUND = 800
 LGBM_EARLY_STOPPING_ROUNDS = 50
 
 # ── 記事 ──
