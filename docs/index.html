@@ -308,6 +308,7 @@ body {
     <input type="date" id="dateInput" class="date-input">
     <button class="date-go-btn" id="dateGoBtn">表示</button>
   </div>
+  <div id="latestInfo" style="margin-top:20px;padding:14px;background:var(--card);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08)"></div>
 </div>
 
 <!-- レース一覧画面 -->
@@ -608,6 +609,44 @@ body {
 
   // デフォルト日付をセット
   $("#dateInput").value = todayStr();
+
+  // 最新データ日付を取得して表示
+  (async function loadLatestDates() {
+    const el = $("#latestInfo");
+    try {
+      // 最新5日分の開催日を取得
+      const { data: dates, error: err2 } = await sb
+        .from("races")
+        .select("date")
+        .order("date", { ascending: false })
+        .limit(100);
+
+      if (err2) throw err2;
+      if (!dates || dates.length === 0) {
+        el.innerHTML = '<div style="color:var(--sub);font-size:13px">データがありません</div>';
+        return;
+      }
+
+      // ユニーク日付を取得（最新5日分）
+      const uniqueDates = [...new Set(dates.map(d => d.date))].slice(0, 5);
+
+      let html = '<div style="font-size:13px;color:var(--sub);margin-bottom:8px">データがある直近の日付</div>';
+      for (const d of uniqueDates) {
+        html += `<button class="latest-date-btn" data-date="${d}" style="
+          display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:4px;
+          background:var(--accent-light);border:none;border-radius:8px;cursor:pointer;
+          font-size:14px;font-family:inherit;color:var(--text);min-height:44px;
+        ">${formatDate(d)} <span style="color:var(--sub);font-size:12px">${d}</span></button>`;
+      }
+      el.innerHTML = html;
+
+      el.querySelectorAll(".latest-date-btn").forEach(btn => {
+        btn.addEventListener("click", () => loadRaceList(btn.dataset.date));
+      });
+    } catch (e) {
+      el.innerHTML = '';
+    }
+  })();
 
 })();
 </script>
