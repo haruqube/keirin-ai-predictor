@@ -14,6 +14,10 @@ DB_PATH = BASE_DIR / "db" / "keirin.db"
 RESULTS_DIR = BASE_DIR / "results"
 TEMPLATES_DIR = BASE_DIR / "publishing" / "templates"
 
+# ── Supabase ──
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
 # ── X (Twitter) ──
 X_API_KEY = os.getenv("X_API_KEY", "")
 X_API_SECRET = os.getenv("X_API_SECRET", "")

@@ -1,11 +1,27 @@
-"""SQLiteスキーマ定義・DB初期化"""
+"""DBスキーマ定義・接続管理
 
+環境変数 SUPABASE_URL / SUPABASE_KEY が設定されていれば Supabase (PostgreSQL)、
+なければローカル SQLite に接続する。
+"""
+
+import os
 import sqlite3
 from pathlib import Path
 from config import DB_PATH
 
 
-def get_connection() -> sqlite3.Connection:
+def use_supabase() -> bool:
+    """Supabaseを使用するかどうか"""
+    return bool(os.getenv("SUPABASE_URL")) and bool(os.getenv("SUPABASE_KEY"))
+
+
+def get_connection():
+    """DB接続を返す（SQLite or Supabase互換ラッパー）"""
+    if use_supabase():
+        from db.supabase_client import get_supabase_client, SupabaseConnection
+        client = get_supabase_client()
+        return SupabaseConnection(client)
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row

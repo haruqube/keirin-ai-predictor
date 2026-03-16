@@ -1,6 +1,6 @@
 ## TODO
-- [ ] 過去データ取得完了待ち（2025年 主要12場、バックグラウンド実行中）
-- [ ] 2024年データも取得
+- [ ] Supabaseプロジェクト作成＆スキーマ適用（db/supabase_schema.sql）
+- [ ] 自宅PCでデータ移行実行（scripts/migrate_to_supabase.py）
 - [ ] モデル学習・精度検証
 - [ ] 予測スクリプトの動作確認
 - [ ] X APIキー設定・投稿テスト
@@ -16,6 +16,8 @@
 - [x] 特徴量設計（選手成績13 + レース条件7 + ライン7 = 27特徴量）
 - [x] LightGBM LambdaRankモデル
 - [x] Git初期化・GitHub移行
+- [x] Supabase対応（SQLite/Supabase切り替え可能）
+- [x] データ移行スクリプト作成
 
 ## メモ
 - データソース: keirin.netkeiba.com (netkeirin)
