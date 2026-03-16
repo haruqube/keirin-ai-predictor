@@ -20,6 +20,11 @@ X_API_SECRET = os.getenv("X_API_SECRET", "")
 X_ACCESS_TOKEN = os.getenv("X_ACCESS_TOKEN", "")
 X_ACCESS_SECRET = os.getenv("X_ACCESS_SECRET", "")
 
+# ── Supabase ──
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+
 # ── スクレイピング ──
 SCRAPE_DELAY = 1.5  # 秒
 NETKEIRIN_BASE_URL = "https://keirin.netkeiba.com"
@@ -40,9 +45,11 @@ LGBM_PARAMS = {
     "feature_fraction": 0.6,
     "bagging_fraction": 0.8,
     "bagging_freq": 5,
+    "lambda_l1": 0.1,
+    "lambda_l2": 0.1,
     "verbose": -1,
 }
-LGBM_NUM_BOOST_ROUND = 800
+LGBM_NUM_BOOST_ROUND = 1000
 LGBM_EARLY_STOPPING_ROUNDS = 50
 
 # ── 記事 ──

@@ -1,4 +1,11 @@
-"""全特徴量を集約するビルダー（バッチ最適化版）"""
+"""全特徴量を集約するビルダー（バッチ最適化版）
+
+改善点:
+- DB接続を1つにまとめてレース単位でバッチ処理
+- N+1クエリ問題を解消（旧: 9選手×3ビルダー=27接続 → 新: 1接続で一括）
+- build_dataset()にプログレス表示追加
+"""
+
 
 import logging
 import pandas as pd
@@ -11,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 class FeatureBuilder:
     """全特徴量をバッチ処理で一括生成"""
+
+    def __init__(self):
+        from features.rider_features import RiderFeatureBuilder
+        from features.race_features import RaceFeatureBuilder
+        from features.line_features import LineFeatureBuilder
+        self.rider_builder = RiderFeatureBuilder()
+        self.race_builder = RaceFeatureBuilder()
+        self.line_builder = LineFeatureBuilder()
+        self.builders = [self.rider_builder, self.race_builder, self.line_builder]
 
     @property
     def feature_names(self) -> list[str]:
@@ -356,10 +372,16 @@ class FeatureBuilder:
 
         return pd.DataFrame(rows)
 
-    def build_race_features(self, race_id: str, race_date: str) -> pd.DataFrame:
-        """1レース分の特徴量（予測時用）"""
-        conn = get_connection()
+    def build_race_features(self, race_id: str, race_date: str,
+                            conn=None) -> pd.DataFrame:
+        """1レース分の全選手の特徴量DataFrameを作成（最適化版）"""
+        close_conn = False
+        if conn is None:
+            conn = get_connection()
+            close_conn = True
+
         try:
+            # 出走選手一覧を取得
             riders = conn.execute(
                 "SELECT DISTINCT rider_id FROM entries WHERE race_id = ?",
                 (race_id,)
@@ -374,23 +396,28 @@ class FeatureBuilder:
             if not riders:
                 return pd.DataFrame()
 
-            from features.rider_features import RiderFeatureBuilder
-            from features.race_features import RaceFeatureBuilder
-            from features.line_features import LineFeatureBuilder
+            rider_ids = [r["rider_id"] for r in riders if r["rider_id"]]
+            if not rider_ids:
+                return pd.DataFrame()
 
-            builders = [RiderFeatureBuilder(), RaceFeatureBuilder(), LineFeatureBuilder()]
+            # バッチ計算（1接続でまとめて処理）
+            rider_feats = self.rider_builder.build_batch(
+                race_id, rider_ids, race_date, conn)
+            race_feats = self.race_builder.build_batch(
+                race_id, rider_ids, race_date, conn)
+            line_feats = self.line_builder.build_batch(
+                race_id, rider_ids, race_date, conn)
 
             rows = []
-            for r in riders:
-                rider_id = r["rider_id"]
-                if not rider_id:
-                    continue
-                feat_row = {"race_id": race_id, "rider_id": rider_id}
-                for builder in builders:
-                    feats = builder.build(race_id, rider_id, race_date)
-                    feat_row.update(feats)
+            for rid in rider_ids:
+                feat_row = {"race_id": race_id, "rider_id": rid}
+                feat_row.update(rider_feats.get(rid, {}))
+                feat_row.update(race_feats.get(rid, {}))
+                feat_row.update(line_feats.get(rid, {}))
+
                 rows.append(feat_row)
 
             return pd.DataFrame(rows)
         finally:
-            conn.close()
+            if close_conn:
+                conn.close()

@@ -144,8 +144,11 @@ def init_db():
 
     CREATE INDEX IF NOT EXISTS idx_results_race ON race_results(race_id);
     CREATE INDEX IF NOT EXISTS idx_results_rider ON race_results(rider_id);
+    CREATE INDEX IF NOT EXISTS idx_results_rider_race ON race_results(rider_id, race_id);
     CREATE INDEX IF NOT EXISTS idx_races_date ON races(date);
+    CREATE INDEX IF NOT EXISTS idx_races_date_id ON races(date, race_id);
     CREATE INDEX IF NOT EXISTS idx_entries_race ON entries(race_id);
+    CREATE INDEX IF NOT EXISTS idx_entries_race_rider ON entries(race_id, rider_id);
     CREATE INDEX IF NOT EXISTS idx_predictions_race ON predictions(race_id);
     CREATE INDEX IF NOT EXISTS idx_rider_stats_rider ON rider_stats(rider_id);
     """)
