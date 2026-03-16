@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>競輪AI予想</title>
+<style>
+/* ============================================================
+   CSS — モバイルファースト
+   ============================================================ */
+:root {
+  --bg: #f5f5f5;
+  --card: #ffffff;
+  --text: #1a1a1a;
+  --sub: #666666;
+  --border: #e0e0e0;
+  --accent: #1976d2;
+  --accent-light: #e3f2fd;
+  --mark-honmei: #d32f2f;
+  --mark-taikou: #1565c0;
+  --mark-tanana: #2e7d32;
+  --mark-renka: #757575;
+  --grade-gp: #7b1fa2;
+  --grade-g1: #c62828;
+  --grade-g2: #e65100;
+  --grade-g3: #2e7d32;
+  --grade-f1: #1565c0;
+  --grade-f2: #757575;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "Segoe UI", "Meiryo", "Yu Gothic", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── ヘッダー ── */
+.header {
+  background: var(--accent);
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header h1 { font-size: 16px; font-weight: 700; flex: 1; }
+.back-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.back-btn:hover { opacity: 0.8; }
+.hidden { display: none !important; }
+
+/* ── 日付選択画面 ── */
+.date-screen { padding: 24px 16px; }
+.date-buttons {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.date-btn {
+  flex: 1;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.15s;
+}
+.date-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+.date-btn.secondary {
+  background: var(--card);
+  color: var(--accent);
+}
+.date-btn:active { transform: scale(0.97); }
+.date-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.date-input-wrap label {
+  font-size: 14px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.date-input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: inherit;
+}
+.date-go-btn {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ── レース一覧画面 ── */
+.racelist-screen { padding: 12px 16px 24px; }
+.date-label {
+  font-size: 14px;
+  color: var(--sub);
+  margin-bottom: 12px;
+}
+.venue-group { margin-bottom: 16px; }
+.venue-name {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 8px 0;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 4px;
+}
+.race-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  gap: 10px;
+  min-height: 44px;
+  transition: background 0.1s;
+}
+.race-item:active { background: var(--accent-light); }
+.race-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sub);
+  min-width: 28px;
+}
+.race-info { flex: 1; min-width: 0; }
+.race-title {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grade-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.grade-GP  { background: var(--grade-gp); }
+.grade-G1  { background: var(--grade-g1); }
+.grade-G2  { background: var(--grade-g2); }
+.grade-G3  { background: var(--grade-g3); }
+.grade-F1  { background: var(--grade-f1); }
+.grade-F2  { background: var(--grade-f2); }
+.race-arrow {
+  color: var(--sub);
+  font-size: 16px;
+}
+
+/* ── レース詳細画面 ── */
+.detail-screen { padding: 12px 16px 24px; }
+.detail-race-info {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.detail-race-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.detail-race-meta {
+  font-size: 13px;
+  color: var(--sub);
+}
+
+/* 予測テーブル */
+.pred-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  font-size: 13px;
+}
+.pred-table th {
+  background: #f0f0f0;
+  padding: 8px 4px;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--sub);
+  text-align: center;
+  white-space: nowrap;
+}
+.pred-table td {
+  padding: 10px 4px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.pred-table tr:first-child td { border-top: none; }
+
+/* 枠番カラー */
+.frame { display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%; font-weight: 700; font-size: 12px; }
+.frame-1 { background: #fff; color: #333; border: 2px solid #ccc; }
+.frame-2 { background: #1a1a1a; color: #fff; }
+.frame-3 { background: #d32f2f; color: #fff; }
+.frame-4 { background: #1565c0; color: #fff; }
+.frame-5 { background: #f9a825; color: #333; }
+.frame-6 { background: #2e7d32; color: #fff; }
+.frame-7 { background: #e65100; color: #fff; }
+.frame-8 { background: #e91e63; color: #fff; }
+.frame-9 { background: #7b1fa2; color: #fff; }
+
+/* 印 */
+.mark { font-weight: 700; font-size: 16px; }
+.mark-honmei { color: var(--mark-honmei); }
+.mark-taikou { color: var(--mark-taikou); }
+.mark-tanana { color: var(--mark-tanana); }
+.mark-renka  { color: var(--mark-renka); }
+
+.rider-name-cell {
+  text-align: left !important;
+  padding-left: 6px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+.class-cell { font-size: 11px; color: var(--sub); }
+.score-cell { font-size: 12px; }
+.result-cell { font-weight: 700; }
+.result-1 { color: var(--mark-honmei); }
+.result-2 { color: var(--mark-taikou); }
+.result-3 { color: var(--mark-tanana); }
+
+/* ローディング / エラー */
+.loading, .empty-msg, .error-msg {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--sub);
+  font-size: 14px;
+}
+.error-msg { color: var(--mark-honmei); }
+.spinner {
+  display: inline-block;
+  width: 24px; height: 24px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     HTML
+     ============================================================ -->
+<div class="header">
+  <button class="back-btn hidden" id="backBtn" aria-label="戻る">&larr;</button>
+  <h1 id="headerTitle">競輪AI予想</h1>
+</div>
+
+<!-- 日付選択画面 -->
+<div id="dateScreen" class="date-screen">
+  <div class="date-buttons">
+    <button class="date-btn primary" id="todayBtn">今日</button>
+    <button class="date-btn secondary" id="tomorrowBtn">明日</button>
+  </div>
+  <div class="date-input-wrap">
+    <label for="dateInput">日付指定:</label>
+    <input type="date" id="dateInput" class="date-input">
+    <button class="date-go-btn" id="dateGoBtn">表示</button>
+  </div>
+</div>
+
+<!-- レース一覧画面 -->
+<div id="racelistScreen" class="racelist-screen hidden"></div>
+
+<!-- レース詳細画面 -->
+<div id="detailScreen" class="detail-screen hidden"></div>
+
+<!-- ============================================================
+     JavaScript
+     ============================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(function() {
+  "use strict";
+
+  /* ── 設定 ── */
+  const SUPABASE_URL = "https://yzfoauumlocqdgxojwed.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6Zm9hdXVtbG9jcWRneG9qd2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDYwNDEsImV4cCI6MjA4OTE4MjA0MX0.pEmH6Eft5urxMtNh6P3R2gPDh7_dZFoCyZmWC95eWcU";
+
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  /* ── ヘルパー ── */
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  /* ── 状態 ── */
+  const S = {
+    screen: "date",    // "date" | "racelist" | "detail"
+    date: null,        // "YYYY-MM-DD"
+    raceId: null,
+  };
+
+  /* ── 画面切替 ── */
+  function showScreen(name) {
+    S.screen = name;
+    $("#dateScreen").classList.toggle("hidden", name !== "date");
+    $("#racelistScreen").classList.toggle("hidden", name !== "racelist");
+    $("#detailScreen").classList.toggle("hidden", name !== "detail");
+    $("#backBtn").classList.toggle("hidden", name === "date");
+
+    if (name === "date") {
+      $("#headerTitle").textContent = "競輪AI予想";
+    }
+  }
+
+  /* ── 日付ユーティリティ ── */
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function tomorrowStr() {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function formatDate(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    const dow = ["日","月","火","水","木","金","土"][d.getDay()];
+    return `${d.getMonth()+1}/${d.getDate()}(${dow})`;
+  }
+
+  /* ── グレードバッジ ── */
+  function gradeBadge(grade) {
+    if (!grade) return "";
+    return `<span class="grade-badge grade-${grade}">${grade}</span>`;
+  }
+
+  /* ── 印クラス ── */
+  function markClass(mark) {
+    if (mark === "\u25ce") return "mark-honmei";  // ◎
+    if (mark === "\u25cb") return "mark-taikou";   // ○
+    if (mark === "\u25b2") return "mark-tanana";   // ▲
+    if (mark === "\u25b3") return "mark-renka";    // △
+    return "";
+  }
+
+  /* ── ローディング表示 ── */
+  function loadingHTML() {
+    return `<div class="loading"><div class="spinner"></div><br>読み込み中...</div>`;
+  }
+
+  /* ── レース一覧取得・表示 ── */
+  async function loadRaceList(dateStr) {
+    S.date = dateStr;
+    showScreen("racelist");
+    $("#headerTitle").textContent = formatDate(dateStr);
+    const el = $("#racelistScreen");
+    el.innerHTML = loadingHTML();
+
+    try {
+      // 指定日のレースを取得
+      const { data: races, error } = await sb
+        .from("races")
+        .select("race_id, velodrome, velodrome_code, race_number, race_name, grade, rider_count")
+        .eq("date", dateStr)
+        .order("race_id");
+
+      if (error) throw error;
+
+      if (!races || races.length === 0) {
+        el.innerHTML = `<div class="empty-msg">この日のレースデータがありません</div>`;
+        return;
+      }
+
+      // 予測の有無を確認
+      const raceIds = races.map(r => r.race_id);
+      const { data: preds } = await sb
+        .from("predictions")
+        .select("race_id")
+        .in("race_id", raceIds);
+
+      const predSet = new Set((preds || []).map(p => p.race_id));
+
+      // 開催場ごとにグループ化
+      const groups = {};
+      for (const race of races) {
+        const key = race.velodrome || "不明";
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(race);
+      }
+
+      let html = `<div class="date-label">${formatDate(dateStr)} のレース</div>`;
+
+      for (const [venue, venueRaces] of Object.entries(groups)) {
+        html += `<div class="venue-group">`;
+        html += `<div class="venue-name">${venue}</div>`;
+        for (const race of venueRaces) {
+          const hasPred = predSet.has(race.race_id);
+          const title = race.race_name || `${race.race_number}R`;
+          html += `
+            <div class="race-item" data-raceid="${race.race_id}">
+              <span class="race-num">${race.race_number}R</span>
+              <div class="race-info">
+                <div class="race-title">${title}</div>
+              </div>
+              ${gradeBadge(race.grade)}
+              ${hasPred ? "" : '<span style="font-size:11px;color:var(--sub)">予測なし</span>'}
+              <span class="race-arrow">&rsaquo;</span>
+            </div>`;
+        }
+        html += `</div>`;
+      }
+
+      el.innerHTML = html;
+
+      // レースクリックイベント
+      el.querySelectorAll(".race-item").forEach(item => {
+        item.addEventListener("click", () => {
+          loadRaceDetail(item.dataset.raceid);
+        });
+      });
+
+    } catch (err) {
+      el.innerHTML = `<div class="error-msg">読み込みエラー: ${err.message}</div>`;
+    }
+  }
+
+  /* ── レース詳細取得・表示 ── */
+  async function loadRaceDetail(raceId) {
+    S.raceId = raceId;
+    showScreen("detail");
+    const el = $("#detailScreen");
+    el.innerHTML = loadingHTML();
+
+    try {
+      // prediction_detail ビューから取得
+      const { data, error } = await sb
+        .from("prediction_detail")
+        .select("*")
+        .eq("race_id", raceId)
+        .order("predicted_rank");
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        // 予測なし → レース基本情報だけ表示
+        const { data: raceInfo } = await sb
+          .from("races")
+          .select("*")
+          .eq("race_id", raceId)
+          .single();
+
+        let html = "";
+        if (raceInfo) {
+          html += raceInfoHTML(raceInfo);
+        }
+        html += `<div class="empty-msg">このレースの予測データがありません</div>`;
+        el.innerHTML = html;
+        return;
+      }
+
+      const race = data[0];
+      $("#headerTitle").textContent = `${race.velodrome} ${race.race_number}R`;
+
+      // レース情報ヘッダー
+      let html = `
+        <div class="detail-race-info">
+          <div class="detail-race-title">
+            ${race.race_name || `${race.race_number}R`}
+            ${gradeBadge(race.grade)}
+          </div>
+          <div class="detail-race-meta">
+            ${formatDate(race.race_date)} ${race.velodrome}
+            ${race.bank_length ? ` / ${race.bank_length}m` : ""}
+            ${race.rider_count ? ` / ${race.rider_count}車` : ""}
+          </div>
+        </div>`;
+
+      // 結果が存在するか判定
+      const hasResults = data.some(d => d.finish_position != null);
+
+      // 予測テーブル
+      html += `<table class="pred-table"><thead><tr>
+        <th>予</th><th>印</th><th>枠</th><th>車</th>
+        <th style="text-align:left">選手</th><th>級</th><th>得点</th>`;
+
+      if (hasResults) {
+        html += `<th>着</th><th>上り</th>`;
+      }
+      html += `</tr></thead><tbody>`;
+
+      for (const row of data) {
+        const mc = markClass(row.mark);
+        const frameNum = row.frame_number || "-";
+        const bikeNum = row.bike_number || "-";
+        const frameClass = (frameNum >= 1 && frameNum <= 9) ? `frame-${frameNum}` : "";
+
+        html += `<tr>
+          <td>${row.predicted_rank || "-"}</td>
+          <td><span class="mark ${mc}">${row.mark || ""}</span></td>
+          <td><span class="frame ${frameClass}">${frameNum}</span></td>
+          <td>${bikeNum}</td>
+          <td class="rider-name-cell">${row.rider_name || "-"}</td>
+          <td class="class-cell">${row.rider_class || "-"}</td>
+          <td class="score-cell">${row.avg_competition_score != null ? row.avg_competition_score.toFixed(1) : "-"}</td>`;
+
+        if (hasResults) {
+          const fp = row.finish_position;
+          const resultClass = fp === 1 ? "result-1" : fp === 2 ? "result-2" : fp === 3 ? "result-3" : "";
+          html += `<td class="result-cell ${resultClass}">${fp != null ? fp : "-"}</td>`;
+          html += `<td class="score-cell">${row.last_1lap != null ? row.last_1lap.toFixed(1) : "-"}</td>`;
+        }
+
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table>`;
+      el.innerHTML = html;
+
+    } catch (err) {
+      el.innerHTML = `<div class="error-msg">読み込みエラー: ${err.message}</div>`;
+    }
+  }
+
+  /* ── レース情報HTMLヘルパー ── */
+  function raceInfoHTML(r) {
+    return `
+      <div class="detail-race-info">
+        <div class="detail-race-title">
+          ${r.race_name || `${r.race_number}R`}
+          ${gradeBadge(r.grade)}
+        </div>
+        <div class="detail-race-meta">
+          ${formatDate(r.date)} ${r.velodrome}
+          ${r.bank_length ? ` / ${r.bank_length}m` : ""}
+        </div>
+      </div>`;
+  }
+
+  /* ── イベントリスナー ── */
+  $("#todayBtn").addEventListener("click", () => loadRaceList(todayStr()));
+  $("#tomorrowBtn").addEventListener("click", () => loadRaceList(tomorrowStr()));
+  $("#dateGoBtn").addEventListener("click", () => {
+    const v = $("#dateInput").value;
+    if (v) loadRaceList(v);
+  });
+  $("#dateInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const v = $("#dateInput").value;
+      if (v) loadRaceList(v);
+    }
+  });
+
+  $("#backBtn").addEventListener("click", () => {
+    if (S.screen === "detail") {
+      loadRaceList(S.date);
+    } else if (S.screen === "racelist") {
+      showScreen("date");
+    }
+  });
+
+  // デフォルト日付をセット
+  $("#dateInput").value = todayStr();
+
+})();
+</script>
+</body>
+</html>
