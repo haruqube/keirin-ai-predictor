@@ -267,6 +267,72 @@ body {
 .result-2 { color: var(--mark-taikou); }
 .result-3 { color: var(--mark-tanana); }
 
+/* 買い目推奨 */
+.bet-section {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.bet-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.confidence-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.confidence-high { background: var(--mark-honmei); }
+.confidence-mid { background: var(--grade-g2); }
+.confidence-low { background: var(--mark-renka); }
+.bet-type-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sub);
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.bet-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 13px;
+  gap: 8px;
+}
+.bet-combo { font-weight: 700; flex: 1; }
+.bet-prob {
+  font-size: 11px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.bet-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+.tag-honmei { background: var(--mark-honmei); }
+.tag-chuuana { background: var(--grade-g2); }
+.tag-ouana { background: var(--grade-gp); }
+
 /* ローディング / エラー */
 .loading, .empty-msg, .error-msg {
   text-align: center;
@@ -563,11 +629,124 @@ body {
       }
 
       html += `</tbody></table>`;
+
+      // ── おすすめ買い目セクション ──
+      if (!hasResults && data.length >= 3) {
+        html += buildBetRecommendation(data);
+      }
+
       el.innerHTML = html;
 
     } catch (err) {
       el.innerHTML = `<div class="error-msg">読み込みエラー: ${err.message}</div>`;
     }
+  }
+
+  /* ── 買い目推奨ロジック ── */
+  function buildBetRecommendation(data) {
+    // 予測スコアからsoftmaxで勝率推定
+    const scores = data.map(d => d.predicted_score || 0);
+    const maxS = Math.max(...scores);
+    const exps = scores.map(s => Math.exp((s - maxS) * 3)); // 温度パラメータ=3で鋭く
+    const sumExp = exps.reduce((a, b) => a + b, 0);
+    const probs = exps.map(e => e / sumExp);
+
+    // 上位5人の情報
+    const top = data.slice(0, 5).map((d, i) => ({
+      rank: i + 1,
+      mark: d.mark || "",
+      bike: d.bike_number || "?",
+      name: (d.rider_name || "").slice(0, 4),
+      prob: probs[i],
+      score: d.predicted_score || 0,
+    }));
+
+    // 信頼度 = 1位と2位のスコア差
+    const gap12 = top[0].score - top[1].score;
+    const gap23 = top[1].score - (top[2] ? top[2].score : 0);
+    let confLevel, confPct, confClass, confLabel;
+    if (gap12 > 0.25) {
+      confLevel = "high"; confPct = 85; confClass = "confidence-high"; confLabel = "堅いレース";
+    } else if (gap12 > 0.1) {
+      confLevel = "mid"; confPct = 60; confClass = "confidence-mid"; confLabel = "普通";
+    } else {
+      confLevel = "low"; confPct = 35; confClass = "confidence-low"; confLabel = "混戦";
+    }
+
+    let html = `<div class="bet-section">`;
+    html += `<div class="bet-section-title">
+      おすすめ買い目
+      <span style="font-size:11px;color:var(--sub);font-weight:400">${confLabel}</span>
+      <div class="confidence-bar"><div class="confidence-fill ${confClass}" style="width:${confPct}%"></div></div>
+    </div>`;
+
+    // 車番表示ヘルパー
+    const bk = (t) => `<span style="font-weight:700">${t.bike}</span>${t.name}`;
+
+    // ── 2車単（1着-2着の順番指定）──
+    html += `<div class="bet-type-label">2車単（1着-2着）</div>`;
+    const exactas = [
+      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
+      { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" },
+    ];
+    if (confLevel === "low" || confLevel === "mid") {
+      exactas.push({ a: top[1], b: top[0], tag: "中穴", cls: "tag-chuuana" });
+      if (top[2]) exactas.push({ a: top[1], b: top[2], tag: "中穴", cls: "tag-chuuana" });
+    }
+    for (const e of exactas) {
+      const p = (e.a.prob * e.b.prob / (1 - e.a.prob) * 100);
+      html += `<div class="bet-item">
+        <span class="bet-combo">${e.a.bike} → ${e.b.bike}</span>
+        <span class="bet-prob">${e.a.name}→${e.b.name}</span>
+        <span class="bet-tag ${e.cls}">${e.tag}</span>
+      </div>`;
+    }
+
+    // ── 3連単（1-2-3着の順番指定）──
+    if (top.length >= 3) {
+      html += `<div class="bet-type-label">3連単（1着-2着-3着）</div>`;
+      const tris = [
+        { a: top[0], b: top[1], c: top[2], tag: "本命", cls: "tag-honmei" },
+        { a: top[0], b: top[2], c: top[1], tag: "対抗", cls: "tag-honmei" },
+      ];
+      if (confLevel !== "high" && top[3]) {
+        tris.push({ a: top[0], b: top[1], c: top[3], tag: "中穴", cls: "tag-chuuana" });
+        tris.push({ a: top[1], b: top[0], c: top[2], tag: "中穴", cls: "tag-chuuana" });
+      }
+      if (confLevel === "low" && top[3]) {
+        tris.push({ a: top[0], b: top[2], c: top[3], tag: "大穴", cls: "tag-ouana" });
+      }
+      for (const t of tris) {
+        html += `<div class="bet-item">
+          <span class="bet-combo">${t.a.bike} → ${t.b.bike} → ${t.c.bike}</span>
+          <span class="bet-prob">${t.a.name}→${t.b.name}→${t.c.name}</span>
+          <span class="bet-tag ${t.cls}">${t.tag}</span>
+        </div>`;
+      }
+    }
+
+    // ── ワイド（2人が3着以内）──
+    html += `<div class="bet-type-label">ワイド（3着以内の2人）</div>`;
+    const wides = [
+      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
+      { a: top[0], b: top[2], tag: "本命", cls: "tag-honmei" },
+      { a: top[1], b: top[2], tag: "対抗", cls: "tag-honmei" },
+    ];
+    if (top[3]) {
+      wides.push({ a: top[0], b: top[3], tag: "中穴", cls: "tag-chuuana" });
+    }
+    for (const w of wides) {
+      const lo = Math.min(w.a.bike, w.b.bike);
+      const hi = Math.max(w.a.bike, w.b.bike);
+      html += `<div class="bet-item">
+        <span class="bet-combo">${lo} = ${hi}</span>
+        <span class="bet-prob">${w.a.name}-${w.b.name}</span>
+        <span class="bet-tag ${w.cls}">${w.tag}</span>
+      </div>`;
+    }
+
+    html += `</div>`;
+    return html;
   }
 
   /* ── レース情報HTMLヘルパー ── */
