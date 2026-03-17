@@ -35,9 +35,6 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             "rider_avg_finish_pos_recent10",
             # 出走数
             "rider_race_count",
-            # オッズ・人気
-            "rider_avg_odds",
-            "rider_avg_popularity",
             # --- 上がりタイム特徴量 ---
             "rider_avg_last_1lap",
             "rider_avg_last_1lap_recent5",
@@ -51,6 +48,8 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             "rider_venue_race_count",
             # フォームトレンド（直近5走の着順が改善傾向か悪化傾向か）
             "rider_form_trend",
+            # フォーム鋭度（直近1走 vs 直近5走の加速度）
+            "rider_form_acuity",
             # 前走からの日数
             "rider_days_since_last_race",
             # 着順の安定性（標準偏差）
@@ -217,6 +216,10 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             feats["rider_form_trend"] = numerator / denominator if denominator > 0 else 0.0
         else:
             feats["rider_form_trend"] = 0.0
+
+        # フォーム鋭度（直近1走勝率 - 直近5走勝率）
+        recent1_win = 1.0 if p5[0] == 1 else 0.0
+        feats["rider_form_acuity"] = recent1_win - feats["rider_win_rate_recent5"]
 
         # 前走からの日数
         from datetime import datetime

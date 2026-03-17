@@ -31,7 +31,7 @@ class FeatureBuilder:
     @property
     def feature_names(self) -> list[str]:
         return [
-            # 選手成績 (13)
+            # 選手成績 (12)
             "rider_class_num",
             "rider_win_rate_all",
             "rider_place_rate_all",
@@ -40,34 +40,41 @@ class FeatureBuilder:
             "rider_place_rate_recent5",
             "rider_top3_rate_recent5",
             "rider_win_rate_recent10",
+            "rider_place_rate_recent10",
+            "rider_top3_rate_recent10",
             "rider_avg_finish_pos",
             "rider_avg_finish_pos_recent5",
+            "rider_avg_finish_pos_recent10",
             "rider_race_count",
-            "rider_avg_odds",
-            "rider_avg_popularity",
             # 上がりタイム (3)
             "rider_avg_last_1lap",
             "rider_avg_last_1lap_recent5",
             "rider_best_last_1lap",
-            # バンク相性 (2)
+            # バンク相性 (3) — venue系3特徴量除去(velodrome系と重複、importance極小)
             "rider_velodrome_win_rate",
             "rider_velodrome_race_count",
-            # レース条件 (7)
+            "rider_venue_top3_rate",
+            # フォーム・安定性 (4)
+            "rider_form_trend",
+            "rider_form_acuity",
+            "rider_days_since_last_race",
+            "rider_finish_pos_std",
+            # レース条件 (5) — race_rider_count除去(ほぼ定数9、importance極小)
             "race_grade_num",
             "race_bank_length",
-            "race_rider_count",
             "race_number",
             "entry_frame_number",
             "entry_bike_number",
-            "entry_gear_ratio",
-            # ライン (7)
+            # ライン (6)
             "line_size",
             "line_avg_class",
             "line_is_jiku",
-            "line_is_番手",
             "line_is_3番手",
             "line_strength_score",
             "rider_in_strongest_line",
+            # 交互作用 (2)
+            "rider_class_x_jiku",
+            "form_trend_x_line_strength",
         ]
 
     def build_dataset(self, year_start: int, year_end: int) -> pd.DataFrame:
@@ -161,6 +168,16 @@ class FeatureBuilder:
             line_feats, on=["race_id", "rider_id"], how="left"
         )
 
+        # --- 交互作用特徴量 ---
+        target_results["rider_class_x_jiku"] = (
+            target_results.get("rider_class_num", 6) *
+            target_results.get("line_is_jiku", 0)
+        )
+        target_results["form_trend_x_line_strength"] = (
+            target_results.get("rider_form_trend", 0) *
+            target_results.get("line_strength_score", 0)
+        )
+
         logger.info("All features computed")
 
         # 欠損値埋め
@@ -193,12 +210,21 @@ class FeatureBuilder:
             "rider_win_rate_all": 0, "rider_place_rate_all": 0,
             "rider_top3_rate_all": 0, "rider_win_rate_recent5": 0,
             "rider_place_rate_recent5": 0, "rider_top3_rate_recent5": 0,
-            "rider_win_rate_recent10": 0, "rider_avg_finish_pos": 5.0,
-            "rider_avg_finish_pos_recent5": 5.0, "rider_race_count": 0,
+            "rider_win_rate_recent10": 0,
+            "rider_place_rate_recent10": 0, "rider_top3_rate_recent10": 0,
+            "rider_avg_finish_pos": 5.0,
+            "rider_avg_finish_pos_recent5": 5.0,
+            "rider_avg_finish_pos_recent10": 5.0,
+            "rider_race_count": 0,
             "rider_avg_odds": 0, "rider_avg_popularity": 5,
             "rider_avg_last_1lap": 0.0, "rider_avg_last_1lap_recent5": 0.0,
             "rider_best_last_1lap": 0.0,
             "rider_velodrome_win_rate": 0.0, "rider_velodrome_race_count": 0,
+            "rider_venue_win_rate": 0.0, "rider_venue_top3_rate": 0.0,
+            "rider_venue_race_count": 0,
+            "rider_form_trend": 0.0, "rider_form_acuity": 0.0,
+            "rider_days_since_last_race": 90.0,
+            "rider_finish_pos_std": 0.0,
         }
 
         total = len(target_entries)
@@ -285,8 +311,38 @@ class FeatureBuilder:
                 velo_positions = velo_past[:, 2].astype(float)
                 velo_wins = float(np.sum(velo_positions == 1))
                 velo_win_rate = velo_wins / velo_total
+                velo_top3_rate = float(np.sum(velo_positions <= 3)) / velo_total
             else:
                 velo_win_rate = 0.0
+                velo_top3_rate = 0.0
+
+            # フォームトレンド（直近5走の線形回帰スロープ）
+            if r5 >= 3:
+                recent5_rev = recent5[::-1]  # 最古→最新の順
+                n5 = len(recent5_rev)
+                x_mean = (n5 - 1) / 2.0
+                y_mean = float(np.mean(recent5_rev))
+                numer = sum((i - x_mean) * (float(recent5_rev[i]) - y_mean) for i in range(n5))
+                denom = sum((i - x_mean) ** 2 for i in range(n5))
+                form_trend = numer / denom if denom > 0 else 0.0
+            else:
+                form_trend = 0.0
+
+            # 前走からの日数
+            try:
+                from datetime import datetime
+                last_date = datetime.strptime(str(past[-1, 0])[:10], "%Y-%m-%d")
+                current_date = datetime.strptime(str(race_date)[:10], "%Y-%m-%d")
+                days_since = (current_date - last_date).days
+            except (ValueError, TypeError):
+                days_since = 30.0
+
+            # 着順の標準偏差
+            finish_pos_std = float(np.std(positions))
+
+            # フォーム鋭度（直近1走勝率 - 直近5走勝率 = 加速度）
+            recent1_win = 1.0 if positions_rev[0] == 1 else 0.0
+            form_acuity = recent1_win - (float(np.sum(recent5 == 1)) / r5)
 
             stats_list.append({
                 "race_id": race_id, "rider_id": rider_id,
@@ -297,8 +353,11 @@ class FeatureBuilder:
                 "rider_place_rate_recent5": np.sum(recent5 <= 2) / r5,
                 "rider_top3_rate_recent5": np.sum(recent5 <= 3) / r5,
                 "rider_win_rate_recent10": np.sum(recent10 == 1) / r10,
+                "rider_place_rate_recent10": float(np.sum(recent10 <= 2)) / r10,
+                "rider_top3_rate_recent10": float(np.sum(recent10 <= 3)) / r10,
                 "rider_avg_finish_pos": float(np.mean(positions)),
                 "rider_avg_finish_pos_recent5": float(np.mean(recent5)),
+                "rider_avg_finish_pos_recent10": float(np.mean(recent10)),
                 "rider_race_count": total_past,
                 "rider_avg_odds": avg_odds,
                 "rider_avg_popularity": avg_pop,
@@ -307,6 +366,13 @@ class FeatureBuilder:
                 "rider_best_last_1lap": best_lap,
                 "rider_velodrome_win_rate": velo_win_rate,
                 "rider_velodrome_race_count": velo_total,
+                "rider_venue_win_rate": velo_win_rate,
+                "rider_venue_top3_rate": velo_top3_rate,
+                "rider_venue_race_count": velo_total,
+                "rider_form_trend": form_trend,
+                "rider_form_acuity": form_acuity,
+                "rider_days_since_last_race": days_since,
+                "rider_finish_pos_std": finish_pos_std,
             })
 
         return stats_list
@@ -414,6 +480,16 @@ class FeatureBuilder:
                 feat_row.update(rider_feats.get(rid, {}))
                 feat_row.update(race_feats.get(rid, {}))
                 feat_row.update(line_feats.get(rid, {}))
+
+                # 交互作用特徴量
+                feat_row["rider_class_x_jiku"] = (
+                    feat_row.get("rider_class_num", 6) *
+                    feat_row.get("line_is_jiku", 0)
+                )
+                feat_row["form_trend_x_line_strength"] = (
+                    feat_row.get("rider_form_trend", 0) *
+                    feat_row.get("line_strength_score", 0)
+                )
 
                 rows.append(feat_row)
 

@@ -119,6 +119,29 @@ class KeirinScraper:
 
         race_info = self._parse_race_info(soup, race_id)
         results = self._parse_result_table(soup, race_id)
+
+        # ライン並び予想をパースして結果に付与
+        line_data = self._parse_line_formation(soup)
+        if line_data:
+            bike_to_line = {}
+            for line_group_idx, members in enumerate(line_data, 1):
+                line_group = str(line_group_idx)
+                for pos, member in enumerate(members):
+                    bike_num = member["bike_number"]
+                    if pos == 0:
+                        role = "自力"
+                    elif pos == 1:
+                        role = "番手"
+                    else:
+                        role = "3番手"
+                    bike_to_line[bike_num] = {"line_group": line_group, "line_role": role}
+
+            for result in results:
+                bn = result.get("bike_number")
+                if bn and bn in bike_to_line:
+                    result["line_group"] = bike_to_line[bn]["line_group"]
+                    result["line_role"] = bike_to_line[bn]["line_role"]
+
         race_info["results"] = results
         race_info["rider_count"] = len(results)
 

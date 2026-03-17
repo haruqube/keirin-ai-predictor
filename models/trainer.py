@@ -180,15 +180,11 @@ def train_and_evaluate(use_cv: bool = False):
         logger.info("=== Time-Series Cross Validation ===")
         cv_results = time_series_cv(all_df, feature_cols)
 
-    # Train/Test 分割
-    train_mask = all_df["race_date"].apply(
-        lambda d: int(d[:4]) in TRAIN_YEARS
-    )
-    test_mask = all_df["race_date"].apply(
-        lambda d: int(d[:4]) in TEST_YEARS
-    )
-    train_df = all_df[train_mask]
-    test_df = all_df[test_mask]
+    # 時系列で train/val 分割（全データをプールし85%/15%）
+    all_dates = sorted(all_df["race_date"].unique())
+    val_cutoff = all_dates[int(len(all_dates) * 0.85)]
+    train_df = all_df[all_df["race_date"] < val_cutoff]
+    val_df = all_df[all_df["race_date"] >= val_cutoff]
 
     if train_df.empty:
         logger.error("No training data found")
@@ -198,16 +194,16 @@ def train_and_evaluate(use_cv: bool = False):
     y_train = train_df["finish_position"]
     group_train = train_df.groupby("race_id").size().tolist()
 
-    X_test = test_df[feature_cols].fillna(0) if not test_df.empty else None
-    y_test = test_df["finish_position"] if not test_df.empty else None
-    group_test = test_df.groupby("race_id").size().tolist() if not test_df.empty else None
+    X_val = val_df[feature_cols].fillna(0) if not val_df.empty else None
+    y_val = val_df["finish_position"] if not val_df.empty else None
+    group_val = val_df.groupby("race_id").size().tolist() if not val_df.empty else None
 
-    logger.info("Training: %d rows, %d races", len(train_df), len(group_train))
-    if X_test is not None:
-        logger.info("Test: %d rows, %d races", len(test_df), len(group_test))
+    logger.info("Training: %d rows, %d races (dates < %s)", len(train_df), len(group_train), val_cutoff)
+    if X_val is not None:
+        logger.info("Validation: %d rows, %d races (dates >= %s)", len(val_df), len(group_val), val_cutoff)
 
     model = LGBMRanker()
-    model.train(X_train, y_train, group_train, X_test, y_test, group_test)
+    model.train(X_train, y_train, group_train, X_val, y_val, group_val)
 
     # 保存
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -224,6 +220,6 @@ def train_and_evaluate(use_cv: bool = False):
     logger.info("Feature importance:\n%s", importance.to_string())
     importance.to_csv(str(RESULTS_DIR / "feature_importance.csv"), index=False)
 
-    # テストセット評価
-    if not test_df.empty:
-        evaluate_test_set(test_df, model, feature_cols)
+    # Validation セット評価
+    if not val_df.empty:
+        evaluate_test_set(val_df, model, feature_cols)

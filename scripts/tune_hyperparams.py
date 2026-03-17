@@ -72,12 +72,16 @@ def main():
     builder = FeatureBuilder()
     feature_cols = builder.feature_names
 
-    logger.info("Building datasets...")
-    train_df = builder.build_dataset(TRAIN_YEARS[0], TRAIN_YEARS[-1])
-    test_df = builder.build_dataset(TEST_YEARS[0], TEST_YEARS[-1])
+    logger.info("Building dataset...")
+    all_years = sorted(set(TRAIN_YEARS + TEST_YEARS))
+    all_df = builder.build_dataset(all_years[0], all_years[-1])
+    all_df = all_df.dropna(subset=["finish_position"])
 
-    train_df = train_df.dropna(subset=["finish_position"])
-    test_df = test_df.dropna(subset=["finish_position"])
+    # trainer.pyと同じ時系列85/15分割（データリーク防止）
+    all_dates = sorted(all_df["race_date"].unique())
+    val_cutoff = all_dates[int(len(all_dates) * 0.85)]
+    train_df = all_df[all_df["race_date"] < val_cutoff]
+    test_df = all_df[all_df["race_date"] >= val_cutoff]
 
     X_train = train_df[feature_cols].fillna(0)
     y_train = train_df["finish_position"]
@@ -87,14 +91,15 @@ def main():
     y_test = test_df["finish_position"]
     group_test = test_df.groupby("race_id").size().tolist()
 
-    logger.info("Train: %d rows, Test: %d rows", len(train_df), len(test_df))
+    logger.info("Train: %d rows (< %s), Test: %d rows (>= %s)",
+                len(train_df), val_cutoff, len(test_df), val_cutoff)
 
-    # グリッドサーチ
+    # グリッドサーチ（ライン特徴量復活後に最適化）
     param_grid = {
         "num_leaves": [15, 31, 63],
-        "learning_rate": [0.03, 0.05, 0.08],
-        "min_data_in_leaf": [10, 20, 50],
-        "feature_fraction": [0.6, 0.8, 1.0],
+        "learning_rate": [0.01, 0.03, 0.05],
+        "min_data_in_leaf": [20, 50, 100],
+        "feature_fraction": [0.6, 0.7, 0.8],
         "bagging_fraction": [0.7, 0.8, 0.9],
     }
 
@@ -103,6 +108,8 @@ def main():
         "metric": "ndcg",
         "ndcg_eval_at": [1, 3],
         "bagging_freq": 5,
+        "lambda_l1": 0.1,
+        "lambda_l2": 0.1,
         "verbose": -1,
     }
 

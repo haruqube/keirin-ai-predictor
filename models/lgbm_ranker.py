@@ -6,12 +6,15 @@
 - 予測時の安全性向上
 """
 
+import logging
 import pickle
 from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from models.base import BasePredictor
 from config import LGBM_PARAMS, LGBM_NUM_BOOST_ROUND, LGBM_EARLY_STOPPING_ROUNDS
@@ -56,7 +59,7 @@ class LGBMRanker(BasePredictor):
             )
             valid_sets.append(val_data)
             valid_names.append("valid")
-            callbacks.append(lgb.early_stopping(LGBM_EARLY_STOPPING_ROUNDS))
+            callbacks.append(lgb.early_stopping(LGBM_EARLY_STOPPING_ROUNDS, first_metric_only=True))
 
         self.model = lgb.train(
             self.params,
@@ -66,6 +69,7 @@ class LGBMRanker(BasePredictor):
             valid_names=valid_names,
             callbacks=callbacks,
         )
+        logger.info("Trees: %d (best_iteration=%d)", self.model.num_trees(), self.model.best_iteration)
 
     @staticmethod
     def _to_relevance(y: pd.Series, groups: list[int]) -> np.ndarray:

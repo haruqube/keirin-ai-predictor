@@ -15,7 +15,7 @@ from pathlib import Path
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import DB_PATH, SUPABASE_URL, SUPABASE_SERVICE_KEY
+from config import DB_PATH, SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY
 from supabase import create_client
 
 BATCH_SIZE = 500
@@ -194,12 +194,13 @@ def main():
     if args.predictions_only and not args.date:
         parser.error("--predictions-only には --date が必須です")
 
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        print("エラー: SUPABASE_URL と SUPABASE_SERVICE_KEY を .env に設定してください")
+    supabase_key = SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY
+    if not SUPABASE_URL or not supabase_key:
+        print("エラー: SUPABASE_URL と SUPABASE_SERVICE_KEY (または SUPABASE_ANON_KEY) を .env に設定してください")
         sys.exit(1)
 
     print("Supabase に接続中...")
-    client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    client = create_client(SUPABASE_URL, supabase_key)
     conn = get_sqlite_conn()
 
     try:

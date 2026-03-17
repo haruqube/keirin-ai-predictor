@@ -92,21 +92,40 @@ def apply_line_bonus(df, entries, line_formation):
 
 
 def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str]) -> list[str]:
-    """race_programページから指定日の全race_idを効率取得"""
+    """race_programページから指定日の全race_idを効率取得
+
+    kaisai_group_idは開催初日+場コードなので、2日目以降は前日以前の
+    kaisai_group_idからしか取得できない。最大4日前まで遡って検索する。
+    """
+    from datetime import datetime, timedelta
+
+    dt = datetime.strptime(date, "%Y%m%d")
+    # 当日を含め最大5日前まで遡る（4日間開催が最長）
+    check_dates = [(dt - timedelta(days=d)).strftime("%Y%m%d") for d in range(5)]
+
     all_ids = []
     for jyo_cd in jyo_codes:
-        kaisai_group_id = f"{date}{jyo_cd}"
-        cache_key = f"race_program_{kaisai_group_id}"
-        cached = scraper._get_json_cache(cache_key)
-        if cached is not None:
-            all_ids.extend(cached)
-            continue
+        for check_date in check_dates:
+            kaisai_group_id = f"{check_date}{jyo_cd}"
+            cache_key = f"race_program_{kaisai_group_id}"
+            cached = scraper._get_json_cache(cache_key)
+            if cached is not None:
+                # 対象日のrace_idのみ抽出
+                matching = [rid for rid in cached if rid.startswith(date)]
+                all_ids.extend(matching)
+                if matching:
+                    break  # この場コードはヒットしたので次の場へ
+                continue
 
-        url = f"{NETKEIRIN_BASE_URL}/db/race_program/?kaisai_group_id={kaisai_group_id}"
-        html = scraper._get(url)
-        race_ids = sorted(set(re.findall(r"race_id=(\d{12})", html)))
-        scraper._set_json_cache(cache_key, race_ids)
-        all_ids.extend(race_ids)
+            url = f"{NETKEIRIN_BASE_URL}/db/race_program/?kaisai_group_id={kaisai_group_id}"
+            html = scraper._get(url)
+            race_ids = sorted(set(re.findall(r"race_id=(\d{12})", html)))
+            scraper._set_json_cache(cache_key, race_ids)
+            # 対象日のrace_idのみ抽出
+            matching = [rid for rid in race_ids if rid.startswith(date)]
+            all_ids.extend(matching)
+            if matching:
+                break  # この場コードはヒットしたので次の場へ
 
     return sorted(set(all_ids))
 
