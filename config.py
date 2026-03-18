@@ -33,20 +33,20 @@ REQUEST_HEADERS = {
 }
 
 # ── モデル ──
-TRAIN_YEARS = [2024, 2025]
+TRAIN_YEARS = [2022, 2023, 2024, 2025]
 TEST_YEARS = [2025]
 LGBM_PARAMS = {
     "objective": "lambdarank",
     "metric": "ndcg",
     "ndcg_eval_at": [3],
-    "learning_rate": 0.05,
-    "num_leaves": 63,
+    "learning_rate": 0.03,
+    "num_leaves": 31,
     "min_data_in_leaf": 100,
-    "feature_fraction": 0.7,
+    "feature_fraction": 0.6,
     "bagging_fraction": 0.8,
     "bagging_freq": 5,
-    "lambda_l1": 0.1,
-    "lambda_l2": 0.1,
+    "lambda_l1": 0.5,
+    "lambda_l2": 0.5,
     "verbose": -1,
 }
 LGBM_NUM_BOOST_ROUND = 1000

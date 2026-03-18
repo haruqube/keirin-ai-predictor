@@ -31,14 +31,11 @@ class FeatureBuilder:
     @property
     def feature_names(self) -> list[str]:
         return [
-            # 選手成績 (12)
+            # 選手成績 (14)
             "rider_class_num",
             "rider_win_rate_all",
             "rider_place_rate_all",
             "rider_top3_rate_all",
-            "rider_win_rate_recent5",
-            "rider_place_rate_recent5",
-            "rider_top3_rate_recent5",
             "rider_win_rate_recent10",
             "rider_place_rate_recent10",
             "rider_top3_rate_recent10",
@@ -46,12 +43,15 @@ class FeatureBuilder:
             "rider_avg_finish_pos_recent5",
             "rider_avg_finish_pos_recent10",
             "rider_race_count",
+            # 競走得点 (1)
+            "rider_competition_score",
+            # 着差 (1)
+            "rider_avg_margin",
             # 上がりタイム (3)
             "rider_avg_last_1lap",
             "rider_avg_last_1lap_recent5",
             "rider_best_last_1lap",
-            # バンク相性 (3) — venue系3特徴量除去(velodrome系と重複、importance極小)
-            "rider_velodrome_win_rate",
+            # バンク相性 (2)
             "rider_velodrome_race_count",
             "rider_venue_top3_rate",
             # フォーム・安定性 (4)
@@ -59,7 +59,7 @@ class FeatureBuilder:
             "rider_form_acuity",
             "rider_days_since_last_race",
             "rider_finish_pos_std",
-            # レース条件 (5) — race_rider_count除去(ほぼ定数9、importance極小)
+            # レース条件 (5)
             "race_grade_num",
             "race_bank_length",
             "race_number",
@@ -72,6 +72,9 @@ class FeatureBuilder:
             "line_is_3番手",
             "line_strength_score",
             "rider_in_strongest_line",
+            # レース内相対順位 (2)
+            "class_rank_in_race",
+            "score_rank_in_race",
             # 交互作用 (2)
             "rider_class_x_jiku",
             "form_trend_x_line_strength",
@@ -102,6 +105,7 @@ class FeatureBuilder:
             SELECT rr.race_id, rr.rider_id, rr.finish_position, rr.frame_number,
                    rr.bike_number, rr.gear_ratio, rr.odds, rr.popularity,
                    rr.class, rr.line_group, rr.line_role, rr.last_1lap,
+                   rr.margin,
                    r.date as race_date, r.velodrome
             FROM race_results rr
             JOIN races r ON rr.race_id = r.race_id
@@ -178,6 +182,10 @@ class FeatureBuilder:
             target_results.get("line_strength_score", 0)
         )
 
+        # --- レース内相対順位 ---
+        target_results["class_rank_in_race"] = target_results.groupby("race_id")["rider_class_num"].rank(method="min")
+        target_results["score_rank_in_race"] = target_results.groupby("race_id")["rider_competition_score"].rank(method="min", ascending=False)
+
         logger.info("All features computed")
 
         # 欠損値埋め
@@ -204,7 +212,7 @@ class FeatureBuilder:
         # 各選手の全結果を事前にインデックス化
         rider_history = {}
         for rider_id, group in grouped:
-            rider_history[rider_id] = group[["race_date", "race_id", "finish_position", "odds", "popularity", "last_1lap", "velodrome"]].values
+            rider_history[rider_id] = group[["race_date", "race_id", "finish_position", "odds", "popularity", "last_1lap", "velodrome", "margin"]].values
 
         empty_stats = {
             "rider_win_rate_all": 0, "rider_place_rate_all": 0,
@@ -225,6 +233,8 @@ class FeatureBuilder:
             "rider_form_trend": 0.0, "rider_form_acuity": 0.0,
             "rider_days_since_last_race": 90.0,
             "rider_finish_pos_std": 0.0,
+            "rider_competition_score": 0.0,
+            "rider_avg_margin": 2.0,
         }
 
         total = len(target_entries)
@@ -344,6 +354,21 @@ class FeatureBuilder:
             recent1_win = 1.0 if positions_rev[0] == 1 else 0.0
             form_acuity = recent1_win - (float(np.sum(recent5 == 1)) / r5)
 
+            # 競走得点（直近20走の加重平均スコア）
+            recent20 = positions_rev[:20]
+            r20 = len(recent20)
+            scores = np.maximum(0, 11.0 - recent20)  # 1着=10, 2着=9, ..., 9着=2
+            competition_score = float(np.mean(scores))
+
+            # 着差（margin）の数値化
+            margin_vals = past[:, 7]  # index 7 = margin
+            margin_nums = []
+            for mv in margin_vals:
+                parsed = self._parse_margin_to_numeric(mv)
+                if parsed is not None:
+                    margin_nums.append(parsed)
+            avg_margin = sum(margin_nums) / len(margin_nums) if margin_nums else 2.0
+
             stats_list.append({
                 "race_id": race_id, "rider_id": rider_id,
                 "rider_win_rate_all": wins / total_past,
@@ -373,9 +398,49 @@ class FeatureBuilder:
                 "rider_form_acuity": form_acuity,
                 "rider_days_since_last_race": days_since,
                 "rider_finish_pos_std": finish_pos_std,
+                "rider_competition_score": competition_score,
+                "rider_avg_margin": avg_margin,
             })
 
         return stats_list
+
+    @staticmethod
+    def _parse_fraction(s: str) -> float:
+        """分数文字列を数値に変換 ('1/2' -> 0.5)"""
+        if not s:
+            return 0.0
+        if '/' in s:
+            parts = s.split('/')
+            try:
+                return float(parts[0]) / float(parts[1])
+            except (ValueError, ZeroDivisionError):
+                return 0.0
+        try:
+            return float(s)
+        except ValueError:
+            return 0.0
+
+    @staticmethod
+    def _parse_margin_to_numeric(margin_str) -> float | None:
+        """着差文字列を車身数(float)に変換"""
+        if not margin_str or not isinstance(margin_str, str):
+            return None
+        margin = margin_str.split('(')[0].strip()
+        if not margin:
+            return None
+        if 'タイヤ' in margin:
+            return 0.05
+        if '大差' in margin:
+            return 10.0
+        if '車輪' in margin:
+            num_part = margin.replace('車輪', '').strip()
+            return FeatureBuilder._parse_fraction(num_part) * 0.5
+        if '車身' in margin:
+            parts = margin.split('車身')
+            main = FeatureBuilder._parse_fraction(parts[0].strip()) if parts[0].strip() else 0
+            frac = FeatureBuilder._parse_fraction(parts[1].strip()) if len(parts) > 1 and parts[1].strip() else 0
+            return main + frac
+        return None
 
     def _compute_line_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """ライン特徴量をバッチ計算"""
@@ -493,7 +558,12 @@ class FeatureBuilder:
 
                 rows.append(feat_row)
 
-            return pd.DataFrame(rows)
+            df = pd.DataFrame(rows)
+            if not df.empty:
+                # レース内相対順位
+                df["class_rank_in_race"] = df["rider_class_num"].rank(method="min")
+                df["score_rank_in_race"] = df["rider_competition_score"].rank(method="min", ascending=False)
+            return df
         finally:
             if close_conn:
                 conn.close()

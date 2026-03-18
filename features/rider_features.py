@@ -54,6 +54,10 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             "rider_days_since_last_race",
             # 着順の安定性（標準偏差）
             "rider_finish_pos_std",
+            # 競走得点プロキシ
+            "rider_competition_score",
+            # 平均着差
+            "rider_avg_margin",
         ]
 
     def build(self, race_id: str, rider_id: str, race_date: str,
@@ -89,7 +93,7 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
         # 当該レース以前の全成績（日付降順）
         past = conn.execute("""
             SELECT rr.finish_position, rr.odds, rr.popularity, rr.class,
-                   rr.last_1lap, r.date, r.velodrome
+                   rr.last_1lap, r.date, r.velodrome, rr.margin
             FROM race_results rr
             JOIN races r ON rr.race_id = r.race_id
             WHERE rr.rider_id = ? AND r.date < ?
@@ -229,5 +233,20 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             feats["rider_days_since_last_race"] = (current_date - last_date).days
         except (ValueError, TypeError):
             feats["rider_days_since_last_race"] = 30.0
+
+        # 競走得点（直近20走の加重平均スコア）
+        r20 = past[:20]
+        p20 = [r["finish_position"] for r in r20]
+        scores = [max(0, 11 - p) for p in p20]
+        feats["rider_competition_score"] = sum(scores) / len(scores) if scores else 0.0
+
+        # 平均着差
+        from features.builder import FeatureBuilder
+        margin_nums = []
+        for r in past:
+            parsed = FeatureBuilder._parse_margin_to_numeric(r["margin"])
+            if parsed is not None:
+                margin_nums.append(parsed)
+        feats["rider_avg_margin"] = sum(margin_nums) / len(margin_nums) if margin_nums else 2.0
 
         return feats
