@@ -73,6 +73,8 @@ def run_morning(date_str: str):
         try:
             sync_since(client, conn, formatted_date)
             logger.info("Supabase同期完了")
+        except Exception as e:
+            logger.warning("Supabase同期エラー（予測は完了済み）: %s", e)
         finally:
             conn.close()
 
@@ -279,6 +281,8 @@ def run_evening(date_str: str):
         try:
             sync_since(client, sync_conn, formatted_date)
             logger.info("Supabase同期完了")
+        except Exception as e:
+            logger.warning("Supabase同期エラー（結果取得・評価は完了済み）: %s", e)
         finally:
             sync_conn.close()
 
