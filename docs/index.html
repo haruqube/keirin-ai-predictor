@@ -789,6 +789,77 @@ body {
 }
 .yday-dot-hit { background: #059669; }
 .yday-dot-miss { background: #e2e8f0; }
+
+/* ── 3連複コスト計算セクション ── */
+.trifecta-cost {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+}
+.trifecta-cost-title {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trifecta-cost-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.trifecta-cost-item {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 8px;
+  text-align: center;
+}
+.trifecta-cost-item.active {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+.trifecta-cost-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.trifecta-cost-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+.trifecta-cost-sub {
+  font-size: 10px;
+  color: var(--sub);
+  margin-top: 2px;
+}
+.trifecta-cost-detail {
+  font-size: 11px;
+  color: var(--sub);
+  line-height: 1.6;
+}
+.trifecta-cost-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  margin-top: 6px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.trifecta-cost-hit.is-hit { background: #f0fdf4; }
+.trifecta-hit-label { font-weight: 600; color: var(--sub); }
+.trifecta-hit-value { font-weight: 800; }
+.trifecta-hit-value.hit { color: #059669; }
+.trifecta-hit-value.miss { color: #94a3b8; }
 /* ── トップへ戻るボタン ── */
 .scroll-top {
   position: fixed;
@@ -1449,6 +1520,70 @@ body {
       h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
       h += '<div class="yday-stat"><span class="yday-stat-value">' + top3Pct + '%</span><span class="yday-stat-label">Top3一致</span><span class="yday-stat-sub">' + top3Overlap + '/' + top3Total + '</span></div>';
       h += '<div class="yday-stat"><span class="yday-stat-value">' + totalRaces + '</span><span class="yday-stat-label">レース</span></div>';
+      h += '</div>';
+
+      // 3連複購入金額計算
+      var box3Hits = 0, box4Hits = 0, box5Hits = 0;
+      for (var rc of raceCards) {
+        var predSet = new Set(rc.predTop3.map(function(p) { return p.bike_number; }));
+        var actualSet = new Set();
+        var rRows = groups[rc.raceId];
+        for (var rr of rRows) {
+          if (rr.finish_position != null && rr.finish_position <= 3) actualSet.add(rr.bike_number);
+        }
+        // BOX3: 予測Top3 == 実際Top3 (メンバー一致)
+        if (actualSet.size === 3 && predSet.size === 3) {
+          var allMatch = true;
+          predSet.forEach(function(b) { if (!actualSet.has(b)) allMatch = false; });
+          if (allMatch) box3Hits++;
+        }
+        // BOX4: 予測Top4内に実際Top3が全員いるか
+        var pred4 = rRows.slice().sort(function(a,b) { return (a.predicted_rank||99) - (b.predicted_rank||99); }).slice(0, 4);
+        var pred4Set = new Set(pred4.map(function(p) { return p.bike_number; }));
+        if (actualSet.size === 3) {
+          var all4 = true;
+          actualSet.forEach(function(b) { if (!pred4Set.has(b)) all4 = false; });
+          if (all4) box4Hits++;
+        }
+        // BOX5: 予測Top5内に実際Top3が全員いるか
+        var pred5 = rRows.slice().sort(function(a,b) { return (a.predicted_rank||99) - (b.predicted_rank||99); }).slice(0, 5);
+        var pred5Set = new Set(pred5.map(function(p) { return p.bike_number; }));
+        if (actualSet.size === 3) {
+          var all5 = true;
+          actualSet.forEach(function(b) { if (!pred5Set.has(b)) all5 = false; });
+          if (all5) box5Hits++;
+        }
+      }
+
+      // 3連複: BOX3=1通り, BOX4=C(4,3)=4通り, BOX5=C(5,3)=10通り
+      var unitPrice = 100;
+      var box3Cost = totalRaces * 1 * unitPrice;
+      var box4Cost = totalRaces * 4 * unitPrice;
+      var box5Cost = totalRaces * 10 * unitPrice;
+
+      h += '<div class="trifecta-cost">';
+      h += '<div class="trifecta-cost-title">&#127922; 3連複 全レース購入時の合計金額</div>';
+      h += '<div class="trifecta-cost-grid">';
+      h += '<div class="trifecta-cost-item active"><div class="trifecta-cost-label">BOX3 (1通り)</div>';
+      h += '<div class="trifecta-cost-value">' + box3Cost.toLocaleString() + '</div>';
+      h += '<div class="trifecta-cost-sub">円</div></div>';
+      h += '<div class="trifecta-cost-item"><div class="trifecta-cost-label">BOX4 (4通り)</div>';
+      h += '<div class="trifecta-cost-value">' + box4Cost.toLocaleString() + '</div>';
+      h += '<div class="trifecta-cost-sub">円</div></div>';
+      h += '<div class="trifecta-cost-item"><div class="trifecta-cost-label">BOX5 (10通り)</div>';
+      h += '<div class="trifecta-cost-value">' + box5Cost.toLocaleString() + '</div>';
+      h += '<div class="trifecta-cost-sub">円</div></div>';
+      h += '</div>';
+      h += '<div class="trifecta-cost-detail">' + totalRaces + 'レース × 各100円/通り</div>';
+      h += '<div class="trifecta-cost-hit' + (box3Hits > 0 ? ' is-hit' : '') + '">';
+      h += '<span class="trifecta-hit-label">BOX3的中</span>';
+      h += '<span class="trifecta-hit-value ' + (box3Hits > 0 ? 'hit' : 'miss') + '">' + box3Hits + '/' + totalRaces + '</span></div>';
+      h += '<div class="trifecta-cost-hit' + (box4Hits > 0 ? ' is-hit' : '') + '">';
+      h += '<span class="trifecta-hit-label">BOX4的中</span>';
+      h += '<span class="trifecta-hit-value ' + (box4Hits > 0 ? 'hit' : 'miss') + '">' + box4Hits + '/' + totalRaces + '</span></div>';
+      h += '<div class="trifecta-cost-hit' + (box5Hits > 0 ? ' is-hit' : '') + '">';
+      h += '<span class="trifecta-hit-label">BOX5的中</span>';
+      h += '<span class="trifecta-hit-value ' + (box5Hits > 0 ? 'hit' : 'miss') + '">' + box5Hits + '/' + totalRaces + '</span></div>';
       h += '</div>';
 
       // 信頼度の高い順にソート → 上位10件表示
