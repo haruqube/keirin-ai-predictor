@@ -789,22 +789,6 @@ body {
 }
 .yday-dot-hit { background: #059669; }
 .yday-dot-miss { background: #e2e8f0; }
-.yday-toggle {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  margin-top: 4px;
-  background: var(--surface);
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent);
-  font-family: inherit;
-  min-height: 44px;
-}
-.yday-toggle:active { background: var(--accent-light); }
 </style>
 </head>
 <body>
@@ -1439,16 +1423,17 @@ body {
       h += '<div class="yday-stat"><span class="yday-stat-value">' + totalRaces + '</span><span class="yday-stat-label">レース</span></div>';
       h += '</div>';
 
-      // レースカード (最初5件表示、残りは折りたたみ)
-      var INITIAL_SHOW = 5;
-      for (var i = 0; i < raceCards.length; i++) {
-        var rc = raceCards[i];
+      // 信頼度の高い順にソート → 上位10件表示
+      raceCards.sort(function(a, b) { return b.conf - a.conf; });
+      var showCards = raceCards.slice(0, 10);
+
+      for (var i = 0; i < showCards.length; i++) {
+        var rc = showCards[i];
         var cardCls = "yday-card";
         if (rc.isHighConf && rc.isTop1Hit) cardCls += " yday-high-hit";
         else if (rc.isHighConf && !rc.isTop1Hit) cardCls += " yday-high-miss";
-        var hiddenAttr = i >= INITIAL_SHOW ? ' style="display:none"' : '';
 
-        h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '"' + hiddenAttr + ' data-yday-card>';
+        h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '">';
         h += '<div class="yday-card-top">';
         h += '<span class="yday-venue">' + rc.velodrome + ' ' + rc.raceNumber + 'R</span>';
         h += gradeBadge(rc.grade);
@@ -1479,10 +1464,6 @@ body {
         h += '</div>';
         h += '</div>';
       }
-
-      if (raceCards.length > INITIAL_SHOW) {
-        h += '<button class="yday-toggle" id="ydayToggle">残り ' + (raceCards.length - INITIAL_SHOW) + ' レースを表示</button>';
-      }
       h += '</div>';
 
       el.innerHTML = h;
@@ -1491,22 +1472,6 @@ body {
       el.querySelectorAll(".yday-card").forEach(function(c) {
         c.addEventListener("click", function() { loadRaceDetail(c.dataset.raceid); });
       });
-
-      // 折りたたみトグル
-      var toggleBtn = $("#ydayToggle");
-      if (toggleBtn) {
-        var expanded = false;
-        toggleBtn.addEventListener("click", function(e) {
-          e.stopPropagation();
-          expanded = !expanded;
-          el.querySelectorAll("[data-yday-card]").forEach(function(c, idx) {
-            if (idx >= INITIAL_SHOW) c.style.display = expanded ? "" : "none";
-          });
-          toggleBtn.textContent = expanded
-            ? "折りたたむ"
-            : "残り " + (raceCards.length - INITIAL_SHOW) + " レースを表示";
-        });
-      }
     } catch (e) { el.innerHTML = ""; }
   }
 
