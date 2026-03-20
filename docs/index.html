@@ -822,10 +822,8 @@ body {
         if (rows.length < 5) continue;
         if (rows.some(r => r.finish_position != null)) continue;
         const sorted = rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-        const top3 = sorted.slice(0, 3).map(r => r.predicted_score);
-        const rest = sorted.slice(3).map(r => r.predicted_score);
-        const conf = Math.min(...top3) - Math.max(...rest);
-        if (conf >= 1.0) {
+        const conf = sorted[0].predicted_score - sorted[3].predicted_score;
+        if (conf >= 2.4) {
           const st = raceStatus(rows[0].start_time, today);
           if (st === "finished") continue; // 終了レースはおすすめから除外
           recs.push({ id, v: rows[0].velodrome, rn: rows[0].race_number, g: rows[0].grade,
@@ -847,7 +845,7 @@ body {
       h += '</div>';
 
       for (const r of recs) {
-        const confCls = r.conf >= 1.5 ? "conf-very-high" : "conf-high";
+        const confCls = r.conf >= 3.0 ? "conf-very-high" : "conf-high";
         h += '<div class="rec-card" data-raceid="' + r.id + '">';
         h += '<div class="rec-top">';
         h += '<span class="rec-time">' + (r.t || "--:--") + '</span>';
@@ -879,15 +877,13 @@ body {
     } catch (e) { el.innerHTML = ""; }
   }
 
-  // 信頼度計算ユーティリティ
+  // 信頼度計算ユーティリティ (1位vs4位スコア差 — 過去992レース分析で最適と判明)
   function calcRaceConf(predsByRace) {
     const conf = {};
     for (const [rid, rows] of Object.entries(predsByRace)) {
       if (rows.length < 4) continue;
       rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-      const top3 = rows.slice(0, 3).map(r => r.predicted_score);
-      const rest = rows.slice(3).map(r => r.predicted_score);
-      conf[rid] = Math.min(...top3) - Math.max(...rest);
+      conf[rid] = rows[0].predicted_score - rows[3].predicted_score;
     }
     return conf;
   }
@@ -895,8 +891,8 @@ body {
   function confBadge(conf) {
     if (conf == null) return '';
     var cls;
-    if (conf >= 1.0) cls = 'race-conf-high';
-    else if (conf >= 0.5) cls = 'race-conf-mid';
+    if (conf >= 2.4) cls = 'race-conf-high';
+    else if (conf >= 1.8) cls = 'race-conf-mid';
     else cls = 'race-conf-low';
     return '<span class="race-conf ' + cls + '">信頼度 ' + conf.toFixed(1) + '</span>';
   }
@@ -966,8 +962,8 @@ body {
       for (const [venue, vr] of venueEntries) {
         // 場ごとの信頼度集計
         const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
-        const highCount = confs.filter(c => c >= 1.0).length;
-        const midCount = confs.filter(c => c >= 0.5 && c < 1.0).length;
+        const highCount = confs.filter(c => c >= 2.4).length;
+        const midCount = confs.filter(c => c >= 1.8 && c < 2.4).length;
         const hasRec = highCount > 0;
 
         // 時間帯
