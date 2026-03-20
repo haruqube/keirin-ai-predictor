@@ -645,6 +645,33 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
+
+/* レース状態バッジ */
+.race-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.status-live { background: #dc2626; color: #fff; animation: pulse 1.5s infinite; }
+.status-finished { background: #e2e8f0; color: #64748b; }
+.status-upcoming { background: #dbeafe; color: #2563eb; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+/* 終了レースは薄く */
+.race-card.is-finished { opacity: 0.5; }
+.race-card.is-finished:active { opacity: 0.7; }
+.race-card.is-live { border-left: 3px solid #dc2626; }
+
+/* 場カードの状態 */
+.venue-status-row { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+.venue-status-tag {
+  font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 8px;
+}
+.venue-live-tag { background: #fef2f2; color: #dc2626; }
+.venue-done-tag { background: #f1f5f9; color: #94a3b8; }
 </style>
 </head>
 <body>
@@ -739,6 +766,36 @@ body {
     return "";
   }
 
+  function nowHHMM() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function isToday(dateStr) {
+    return dateStr === todayStr();
+  }
+
+  // レース状態: "upcoming" / "live" / "finished"
+  // start_time = "HH:MM", 1レースは約20分
+  function raceStatus(startTime, dateStr) {
+    if (!startTime || !isToday(dateStr)) return null;
+    const now = nowHHMM();
+    const [sh, sm] = startTime.split(":").map(Number);
+    const startMin = sh * 60 + sm;
+    const [nh, nm] = now.split(":").map(Number);
+    const nowMin = nh * 60 + nm;
+    if (nowMin < startMin) return "upcoming";
+    if (nowMin < startMin + 20) return "live";
+    return "finished";
+  }
+
+  function statusBadge(status) {
+    if (status === "live") return '<span class="race-status status-live">LIVE</span>';
+    if (status === "finished") return '<span class="race-status status-finished">終了</span>';
+    if (status === "upcoming") return '<span class="race-status status-upcoming">発走前</span>';
+    return '';
+  }
+
   function loadingHTML() {
     return '<div class="loading"><div class="spinner"></div><br>読み込み中...</div>';
   }
@@ -769,8 +826,10 @@ body {
         const rest = sorted.slice(3).map(r => r.predicted_score);
         const conf = Math.min(...top3) - Math.max(...rest);
         if (conf >= 1.0) {
+          const st = raceStatus(rows[0].start_time, today);
+          if (st === "finished") continue; // 終了レースはおすすめから除外
           recs.push({ id, v: rows[0].velodrome, rn: rows[0].race_number, g: rows[0].grade,
-            t: rows[0].start_time, conf, top3: sorted.slice(0, 3), top4: sorted[3] });
+            t: rows[0].start_time, conf, top3: sorted.slice(0, 3), top4: sorted[3], status: st });
         }
       }
       if (recs.length === 0) { el.innerHTML = ""; return; }
@@ -792,7 +851,7 @@ body {
         h += '<div class="rec-card" data-raceid="' + r.id + '">';
         h += '<div class="rec-top">';
         h += '<span class="rec-time">' + (r.t || "--:--") + '</span>';
-        h += '<span class="rec-venue">' + r.v + ' ' + r.rn + 'R ' + gradeBadge(r.g) + '</span>';
+        h += '<span class="rec-venue">' + r.v + ' ' + r.rn + 'R ' + gradeBadge(r.g) + ' ' + statusBadge(r.status) + '</span>';
         h += '<span class="rec-conf ' + confCls + '">' + r.conf.toFixed(2) + '</span>';
         h += '</div>';
         h += '<div class="rec-bikes">';
@@ -893,11 +952,25 @@ body {
         const times = vr.map(r => r.start_time).filter(Boolean);
         const timeRange = times.length >= 2 ? times[0] + ' - ' + times[times.length - 1] : (times[0] || '');
 
-        h += '<div class="venue-card' + (hasRec ? ' has-rec' : '') + '" data-venue="' + venue + '">';
+        // 場ごとのレース状態集計
+        const statuses = vr.map(r => raceStatus(r.start_time, dateStr));
+        const liveCount = statuses.filter(s => s === "live").length;
+        const finishedCount = statuses.filter(s => s === "finished").length;
+        const upcomingCount = statuses.filter(s => s === "upcoming").length;
+        const allFinished = isToday(dateStr) && times.length > 0 && finishedCount === vr.length;
+
+        h += '<div class="venue-card' + (hasRec ? ' has-rec' : '') + '" data-venue="' + venue + '"' + (allFinished ? ' style="opacity:0.5"' : '') + '>';
         h += '<span class="venue-name">' + venue + '</span>';
         h += '<div class="venue-info">';
         h += '<span class="venue-race-count">' + vr.length + 'レース</span>';
         if (timeRange) h += '<span class="venue-time-range">' + timeRange + '</span>';
+        if (isToday(dateStr) && times.length > 0) {
+          h += '<div class="venue-status-row">';
+          if (liveCount > 0) h += '<span class="venue-status-tag venue-live-tag">LIVE ' + liveCount + 'R</span>';
+          if (upcomingCount > 0) h += '<span class="venue-status-tag" style="background:#dbeafe;color:#2563eb">発走前 ' + upcomingCount + 'R</span>';
+          if (finishedCount > 0) h += '<span class="venue-status-tag venue-done-tag">終了 ' + finishedCount + 'R</span>';
+          h += '</div>';
+        }
         if (confs.length > 0) {
           h += '<div class="venue-conf-summary">';
           if (highCount > 0) h += '<span class="venue-conf-tag venue-conf-high">高信頼 ' + highCount + 'R</span>';
@@ -942,11 +1015,14 @@ body {
         const has = cachedPredSet.has(r.race_id);
         const title = r.race_name || (r.race_number + "R");
         const conf = cachedRaceConf[r.race_id];
-        h += '<div class="race-card" data-raceid="' + r.race_id + '">';
+        const status = raceStatus(r.start_time, dateStr);
+        const cardCls = status === "finished" ? " is-finished" : status === "live" ? " is-live" : "";
+        h += '<div class="race-card' + cardCls + '" data-raceid="' + r.race_id + '">';
         h += '<span class="race-num">' + r.race_number + 'R</span>';
         h += '<span class="race-name">' + title + '</span>';
         h += '<div class="race-meta">';
         if (r.start_time) h += '<span style="font-size:11px;color:var(--sub);font-weight:600">' + r.start_time + '</span>';
+        h += statusBadge(status);
         h += gradeBadge(r.grade);
         if (has && conf != null) h += confBadge(conf);
         if (!has) h += '<span class="no-pred">予測なし</span>';
@@ -991,10 +1067,12 @@ body {
 
       let h = '<div class="detail-header">';
       h += '<div class="detail-title">' + (race.race_name || race.race_number + "R") + ' ' + gradeBadge(race.grade) + '</div>';
+      const detailStatus = raceStatus(race.start_time, race.race_date);
       h += '<div class="detail-meta">';
       h += '<span class="detail-meta-item">' + formatDate(race.race_date) + '</span>';
       h += '<span class="detail-meta-item">' + race.velodrome + '</span>';
       if (race.start_time) h += '<span class="detail-meta-item">' + race.start_time + '発走</span>';
+      h += statusBadge(detailStatus);
       if (race.bank_length) h += '<span class="detail-meta-item">' + race.bank_length + 'm</span>';
       if (race.rider_count) h += '<span class="detail-meta-item">' + race.rider_count + '車</span>';
       h += '</div></div>';
