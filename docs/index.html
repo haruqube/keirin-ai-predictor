@@ -3,48 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f172a">
 <title>競輪AI予想</title>
 <style>
-/* ============================================================
-   CSS — モバイルファースト
-   ============================================================ */
 :root {
-  --bg: #f5f5f5;
+  --bg: #f0f2f5;
   --card: #ffffff;
-  --text: #1a1a1a;
-  --sub: #666666;
-  --border: #e0e0e0;
-  --accent: #1976d2;
-  --accent-light: #e3f2fd;
-  --mark-honmei: #d32f2f;
-  --mark-taikou: #1565c0;
-  --mark-tanana: #2e7d32;
-  --mark-renka: #757575;
-  --grade-gp: #7b1fa2;
-  --grade-g1: #c62828;
-  --grade-g2: #e65100;
-  --grade-g3: #2e7d32;
-  --grade-f1: #1565c0;
-  --grade-f2: #757575;
+  --text: #1e293b;
+  --sub: #64748b;
+  --muted: #94a3b8;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --accent-light: #dbeafe;
+  --surface: #f8fafc;
+  --honmei: #dc2626;
+  --taikou: #2563eb;
+  --tanana: #059669;
+  --renka: #6b7280;
+  --grade-gp: #7c3aed;
+  --grade-g1: #dc2626;
+  --grade-g2: #ea580c;
+  --grade-g3: #059669;
+  --grade-f1: #2563eb;
+  --grade-f2: #6b7280;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: "Segoe UI", "Meiryo", "Yu Gothic", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", Meiryo, sans-serif;
   background: var(--bg);
   color: var(--text);
   max-width: 480px;
   margin: 0 auto;
   min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── ヘッダー ── */
 .header {
-  background: var(--accent);
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
   color: #fff;
-  padding: 12px 16px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -52,128 +59,333 @@ body {
   top: 0;
   z-index: 100;
 }
-.header h1 { font-size: 16px; font-weight: 700; flex: 1; }
+.header h1 { font-size: 17px; font-weight: 800; flex: 1; letter-spacing: 0.5px; }
+.header-sub { font-size: 10px; font-weight: 400; opacity: 0.7; margin-left: 6px; }
 .back-btn {
-  background: none;
+  background: rgba(255,255,255,0.15);
   border: none;
   color: #fff;
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
-  padding: 4px 8px;
-  min-width: 44px;
-  min-height: 44px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s;
 }
-.back-btn:hover { opacity: 0.8; }
+.back-btn:active { background: rgba(255,255,255,0.25); }
 .hidden { display: none !important; }
 
+/* ── 画面遷移 ── */
+.screen { animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
 /* ── 日付選択画面 ── */
-.date-screen { padding: 24px 16px; }
-.date-buttons {
+.date-screen { padding: 16px; }
+
+/* おすすめセクション */
+.recommend-section { margin-bottom: 20px; }
+.section-header {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.section-icon {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: #fff;
+}
+.section-title { font-size: 15px; font-weight: 700; }
+.section-badge {
+  font-size: 10px; font-weight: 700;
+  background: #fef2f2; color: #dc2626;
+  padding: 2px 8px; border-radius: 10px;
+  margin-left: auto;
+}
+
+.rec-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.rec-card:active { transform: scale(0.98); box-shadow: var(--shadow-sm); }
+.rec-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #dc2626, #f97316);
+}
+
+.rec-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.rec-time {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  min-width: 52px;
+  letter-spacing: -0.5px;
+}
+.rec-venue {
+  font-size: 14px;
+  font-weight: 700;
+  flex: 1;
+}
+.rec-conf {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.conf-high { background: #fef2f2; color: #dc2626; }
+.conf-very-high { background: #dc2626; color: #fff; }
+
+.rec-bikes {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.rec-bike-group {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  background: var(--surface);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.rec-bike-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--sub);
+  margin-right: 4px;
+}
+.bike-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 12px;
+}
+.bike-1 { background: #fff; color: #333; border: 2px solid #d1d5db; }
+.bike-2 { background: #1e293b; color: #fff; }
+.bike-3 { background: #dc2626; color: #fff; }
+.bike-4 { background: #2563eb; color: #fff; }
+.bike-5 { background: #eab308; color: #1e293b; }
+.bike-6 { background: #16a34a; color: #fff; }
+.bike-7 { background: #ea580c; color: #fff; }
+.bike-8 { background: #db2777; color: #fff; }
+.bike-9 { background: #7c3aed; color: #fff; }
+
+.rec-plus {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.rec-riders {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rec-arrow {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 18px;
+}
+
+/* 日付ボタン */
+.date-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 .date-btn {
   flex: 1;
-  padding: 14px;
-  font-size: 15px;
-  font-weight: 600;
-  border: 2px solid var(--accent);
-  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   min-height: 44px;
   transition: all 0.15s;
+  font-family: inherit;
 }
 .date-btn.primary {
   background: var(--accent);
   color: #fff;
+  box-shadow: 0 2px 4px rgba(37,99,235,0.3);
 }
+.date-btn.primary:active { background: var(--accent-dark); transform: scale(0.97); }
 .date-btn.secondary {
   background: var(--card);
-  color: var(--accent);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
 }
-.date-btn:active { transform: scale(0.97); }
-.date-input-wrap {
+.date-btn.secondary:active { background: var(--surface); transform: scale(0.97); }
+
+.date-picker {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 16px;
 }
-.date-input-wrap label {
-  font-size: 14px;
-  color: var(--sub);
-  white-space: nowrap;
-}
+.date-picker label { font-size: 13px; color: var(--sub); white-space: nowrap; font-weight: 600; }
 .date-input {
   flex: 1;
   padding: 10px 12px;
-  font-size: 15px;
+  font-size: 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: inherit;
+  background: var(--card);
+  color: var(--text);
 }
+.date-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
 .date-go-btn {
   padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   min-width: 44px;
   min-height: 44px;
+  font-family: inherit;
 }
 
-/* ── レース一覧画面 ── */
-.racelist-screen { padding: 12px 16px 24px; }
-.date-label {
-  font-size: 14px;
-  color: var(--sub);
-  margin-bottom: 12px;
+/* 直近日付 */
+.recent-section {
+  margin-top: 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
 }
-.venue-group { margin-bottom: 16px; }
-.venue-name {
-  font-size: 15px;
+.recent-label {
+  font-size: 12px;
   font-weight: 700;
-  padding: 8px 0;
-  border-bottom: 2px solid var(--accent);
-  margin-bottom: 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
 }
-.race-item {
+.recent-btn {
   display: flex;
   align-items: center;
-  padding: 12px 8px;
-  border-bottom: 1px solid var(--border);
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  gap: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
   min-height: 44px;
   transition: background 0.1s;
+  gap: 8px;
 }
-.race-item:active { background: var(--accent-light); }
+.recent-btn:active { background: var(--accent-light); }
+.recent-btn .date-main { font-weight: 600; flex: 1; text-align: left; }
+.recent-btn .date-iso { font-size: 11px; color: var(--muted); }
+.recent-btn .arrow { color: var(--muted); }
+
+/* ── レース一覧 ── */
+.racelist-screen { padding: 12px 16px 24px; }
+.racelist-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.venue-section { margin-bottom: 16px; }
+.venue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 8px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 6px;
+}
+.venue-label {
+  font-size: 15px;
+  font-weight: 800;
+}
+.venue-count {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.race-card {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+  gap: 10px;
+  min-height: 48px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.1s;
+}
+.race-card:active { transform: scale(0.98); }
 .race-num {
   font-size: 13px;
-  font-weight: 700;
-  color: var(--sub);
-  min-width: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  min-width: 30px;
 }
-.race-info { flex: 1; min-width: 0; }
-.race-title {
-  font-size: 14px;
+.race-name {
+  flex: 1;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text);
 }
-.grade-badge {
-  font-size: 11px;
-  font-weight: 700;
+.race-meta { display: flex; align-items: center; gap: 6px; }
+.no-pred { font-size: 10px; color: var(--muted); font-weight: 500; }
+.race-chevron { color: var(--muted); font-size: 14px; }
+
+/* グレードバッジ */
+.grade {
+  font-size: 10px;
+  font-weight: 800;
   color: #fff;
   padding: 2px 6px;
   border-radius: 4px;
-  white-space: nowrap;
+  letter-spacing: 0.5px;
 }
 .grade-GP  { background: var(--grade-gp); }
 .grade-G1  { background: var(--grade-g1); }
@@ -181,48 +393,53 @@ body {
 .grade-G3  { background: var(--grade-g3); }
 .grade-F1  { background: var(--grade-f1); }
 .grade-F2  { background: var(--grade-f2); }
-.race-arrow {
-  color: var(--sub);
-  font-size: 16px;
-}
 
-/* ── レース詳細画面 ── */
-.detail-screen { padding: 12px 16px 24px; }
-.detail-race-info {
+/* ── レース詳細 ── */
+.detail-screen { padding: 12px 16px 32px; }
+.detail-header {
   background: var(--card);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-radius: var(--radius);
+  padding: 14px 16px;
   margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow);
 }
-.detail-race-title {
-  font-size: 15px;
-  font-weight: 700;
+.detail-title {
+  font-size: 16px;
+  font-weight: 800;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.detail-race-meta {
-  font-size: 13px;
+.detail-meta {
+  font-size: 12px;
   color: var(--sub);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
+.detail-meta-item { display: flex; align-items: center; gap: 3px; }
 
 /* 予測テーブル */
 .pred-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--card);
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow);
   font-size: 13px;
 }
+.pred-table thead { background: #f1f5f9; }
 .pred-table th {
-  background: #f0f0f0;
-  padding: 8px 4px;
-  font-weight: 600;
-  font-size: 11px;
+  padding: 10px 4px;
+  font-weight: 700;
+  font-size: 10px;
   color: var(--sub);
   text-align: center;
-  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 .pred-table td {
   padding: 10px 4px;
@@ -230,27 +447,34 @@ body {
   border-top: 1px solid var(--border);
   vertical-align: middle;
 }
-.pred-table tr:first-child td { border-top: none; }
+.pred-table tbody tr:first-child td { border-top: none; }
+.pred-table tbody tr.top3-row { background: #fefce8; }
+.pred-table tbody tr:active { background: var(--accent-light); }
 
-/* 枠番カラー */
-.frame { display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 50%; font-weight: 700; font-size: 12px; }
-.frame-1 { background: #fff; color: #333; border: 2px solid #ccc; }
-.frame-2 { background: #1a1a1a; color: #fff; }
-.frame-3 { background: #d32f2f; color: #fff; }
-.frame-4 { background: #1565c0; color: #fff; }
-.frame-5 { background: #f9a825; color: #333; }
-.frame-6 { background: #2e7d32; color: #fff; }
-.frame-7 { background: #e65100; color: #fff; }
-.frame-8 { background: #e91e63; color: #fff; }
-.frame-9 { background: #7b1fa2; color: #fff; }
+.frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 11px;
+}
+.frame-1 { background: #fff; color: #333; border: 2px solid #d1d5db; }
+.frame-2 { background: #1e293b; color: #fff; }
+.frame-3 { background: #dc2626; color: #fff; }
+.frame-4 { background: #2563eb; color: #fff; }
+.frame-5 { background: #eab308; color: #1e293b; }
+.frame-6 { background: #16a34a; color: #fff; }
+.frame-7 { background: #ea580c; color: #fff; }
+.frame-8 { background: #db2777; color: #fff; }
+.frame-9 { background: #7c3aed; color: #fff; }
 
-/* 印 */
-.mark { font-weight: 700; font-size: 16px; }
-.mark-honmei { color: var(--mark-honmei); }
-.mark-taikou { color: var(--mark-taikou); }
-.mark-tanana { color: var(--mark-tanana); }
-.mark-renka  { color: var(--mark-renka); }
+.mark { font-weight: 800; font-size: 16px; }
+.mark-honmei { color: var(--honmei); }
+.mark-taikou { color: var(--taikou); }
+.mark-tanana { color: var(--tanana); }
+.mark-renka  { color: var(--renka); }
 
 .rider-name-cell {
   text-align: left !important;
@@ -258,762 +482,502 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
+  max-width: 85px;
+  font-weight: 500;
 }
-.class-cell { font-size: 11px; color: var(--sub); }
-.score-cell { font-size: 12px; }
-.result-cell { font-weight: 700; }
-.result-1 { color: var(--mark-honmei); }
-.result-2 { color: var(--mark-taikou); }
-.result-3 { color: var(--mark-tanana); }
+.class-cell { font-size: 11px; color: var(--sub); font-weight: 600; }
+.score-cell { font-size: 12px; color: var(--sub); }
+.result-cell { font-weight: 800; font-size: 15px; }
+.result-1 { color: var(--honmei); }
+.result-2 { color: var(--taikou); }
+.result-3 { color: var(--tanana); }
 
 /* 買い目推奨 */
 .bet-section {
   background: var(--card);
-  border-radius: 10px;
-  padding: 14px;
+  border-radius: var(--radius);
+  padding: 16px;
   margin-top: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-shadow: var(--shadow);
 }
-.bet-section-title {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 10px;
+.bet-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 12px;
 }
-.confidence-bar {
+.bet-title { font-size: 14px; font-weight: 800; }
+.bet-conf-label {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.conf-bar {
   flex: 1;
-  height: 6px;
+  height: 4px;
   background: var(--border);
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
 }
-.confidence-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
+.conf-fill { height: 100%; border-radius: 2px; }
+.conf-fill-high { background: var(--honmei); }
+.conf-fill-mid { background: var(--grade-g2); }
+.conf-fill-low { background: var(--renka); }
+
+.bet-group-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 12px 0 6px;
 }
-.confidence-high { background: var(--mark-honmei); }
-.confidence-mid { background: var(--grade-g2); }
-.confidence-low { background: var(--mark-renka); }
-.bet-type-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--sub);
-  margin-top: 10px;
-  margin-bottom: 4px;
-}
-.bet-item {
+.bet-row {
   display: flex;
   align-items: center;
   padding: 8px 10px;
   margin-bottom: 4px;
-  background: var(--bg);
-  border-radius: 8px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
   font-size: 13px;
   gap: 8px;
 }
-.bet-combo { font-weight: 700; flex: 1; }
-.bet-prob {
-  font-size: 11px;
-  color: var(--sub);
-  white-space: nowrap;
-}
+.bet-combo { font-weight: 800; flex: 1; font-size: 14px; letter-spacing: 0.5px; }
+.bet-names { font-size: 11px; color: var(--sub); white-space: nowrap; }
 .bet-tag {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 9px;
+  font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
   color: #fff;
-  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
-.tag-honmei { background: var(--mark-honmei); }
+.tag-honmei { background: var(--honmei); }
 .tag-chuuana { background: var(--grade-g2); }
 .tag-ouana { background: var(--grade-gp); }
-
-/* ── おすすめレースセクション ── */
-.recommend-section { margin-bottom: 20px; }
-.recommend-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--mark-honmei);
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.recommend-card {
-  background: var(--card);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  cursor: pointer;
-  border-left: 4px solid var(--mark-honmei);
-  transition: background 0.1s;
-}
-.recommend-card:active { background: var(--accent-light); }
-.recommend-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.recommend-venue {
-  font-size: 15px;
-  font-weight: 700;
-}
-.recommend-venue-wrap { flex: 1; display: flex; align-items: center; gap: 6px; }
-.recommend-confidence {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--mark-honmei);
-  background: #fce4ec;
-  padding: 2px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-.recommend-time {
-  font-size: 13px;
-  color: var(--sub);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.recommend-bets {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.recommend-bet {
-  font-size: 12px;
-  padding: 4px 8px;
-  background: var(--bg);
-  border-radius: 6px;
-}
-.recommend-bet-label {
-  font-weight: 700;
-  color: var(--accent);
-}
-.recommend-riders {
-  font-size: 11px;
-  color: var(--sub);
-  margin-top: 4px;
-}
-.recommend-empty {
-  text-align: center;
-  padding: 16px;
-  color: var(--sub);
-  font-size: 13px;
-  background: var(--card);
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-}
 
 /* ローディング / エラー */
 .loading, .empty-msg, .error-msg {
   text-align: center;
-  padding: 40px 16px;
-  color: var(--sub);
+  padding: 48px 16px;
+  color: var(--muted);
   font-size: 14px;
 }
-.error-msg { color: var(--mark-honmei); }
+.error-msg { color: var(--honmei); }
 .spinner {
   display: inline-block;
-  width: 24px; height: 24px;
+  width: 28px; height: 28px;
   border: 3px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 8px;
+  animation: spin 0.7s linear infinite;
+  margin-bottom: 12px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.5; }
 </style>
 </head>
 <body>
 
-<!-- ============================================================
-     HTML
-     ============================================================ -->
 <div class="header">
-  <button class="back-btn hidden" id="backBtn" aria-label="戻る">&larr;</button>
-  <h1 id="headerTitle">競輪AI予想</h1>
+  <button class="back-btn hidden" id="backBtn" aria-label="戻る">&#8592;</button>
+  <h1 id="headerTitle">競輪AI予想<span class="header-sub">by AI</span></h1>
 </div>
 
 <!-- 日付選択画面 -->
-<div id="dateScreen" class="date-screen">
-  <!-- おすすめレースセクション（自動ロード） -->
+<div id="dateScreen" class="date-screen screen">
   <div id="recommendSection" class="recommend-section"></div>
-
-  <div class="date-buttons">
+  <div class="date-nav">
     <button class="date-btn primary" id="todayBtn">今日</button>
     <button class="date-btn secondary" id="tomorrowBtn">明日</button>
   </div>
-  <div class="date-input-wrap">
-    <label for="dateInput">日付指定:</label>
+  <div class="date-picker">
+    <label for="dateInput">日付指定</label>
     <input type="date" id="dateInput" class="date-input">
     <button class="date-go-btn" id="dateGoBtn">表示</button>
   </div>
-  <div id="latestInfo" style="margin-top:20px;padding:14px;background:var(--card);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.08)"></div>
+  <div id="latestInfo" class="recent-section"></div>
 </div>
 
-<!-- レース一覧画面 -->
+<!-- レース一覧 -->
 <div id="racelistScreen" class="racelist-screen hidden"></div>
 
-<!-- レース詳細画面 -->
+<!-- レース詳細 -->
 <div id="detailScreen" class="detail-screen hidden"></div>
 
-<!-- ============================================================
-     JavaScript
-     ============================================================ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function() {
   "use strict";
 
-  /* ── 設定 ── */
   const SUPABASE_URL = "https://yzfoauumlocqdgxojwed.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6Zm9hdXVtbG9jcWRneG9qd2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MDYwNDEsImV4cCI6MjA4OTE4MjA0MX0.pEmH6Eft5urxMtNh6P3R2gPDh7_dZFoCyZmWC95eWcU";
-
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  /* ── ヘルパー ── */
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => document.querySelectorAll(sel);
+  const $ = (s) => document.querySelector(s);
+  const S = { screen: "date", date: null, raceId: null };
 
-  /* ── 状態 ── */
-  const S = {
-    screen: "date",    // "date" | "racelist" | "detail"
-    date: null,        // "YYYY-MM-DD"
-    raceId: null,
-  };
-
-  /* ── 画面切替 ── */
   function showScreen(name) {
     S.screen = name;
     $("#dateScreen").classList.toggle("hidden", name !== "date");
     $("#racelistScreen").classList.toggle("hidden", name !== "racelist");
     $("#detailScreen").classList.toggle("hidden", name !== "detail");
     $("#backBtn").classList.toggle("hidden", name === "date");
-
-    if (name === "date") {
-      $("#headerTitle").textContent = "競輪AI予想";
-    }
+    if (name === "date") $("#headerTitle").innerHTML = '競輪AI予想<span class="header-sub">by AI</span>';
+    window.scrollTo(0, 0);
   }
 
-  /* ── 日付ユーティリティ ── */
   function todayStr() {
     const d = new Date();
-    return d.getFullYear() + "-" +
-      String(d.getMonth() + 1).padStart(2, "0") + "-" +
-      String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
   }
-
   function tomorrowStr() {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.getFullYear() + "-" +
-      String(d.getMonth() + 1).padStart(2, "0") + "-" +
-      String(d.getDate()).padStart(2, "0");
+    const d = new Date(); d.setDate(d.getDate()+1);
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
   }
-
-  function formatDate(dateStr) {
-    const d = new Date(dateStr + "T00:00:00");
+  function formatDate(s) {
+    const d = new Date(s + "T00:00:00");
     const dow = ["日","月","火","水","木","金","土"][d.getDay()];
-    return `${d.getMonth()+1}/${d.getDate()}(${dow})`;
+    return (d.getMonth()+1) + "/" + d.getDate() + "(" + dow + ")";
   }
 
-  /* ── グレードバッジ ── */
-  function gradeBadge(grade) {
-    if (!grade) return "";
-    return `<span class="grade-badge grade-${grade}">${grade}</span>`;
+  function gradeBadge(g) {
+    return g ? '<span class="grade grade-' + g + '">' + g + '</span>' : '';
   }
 
-  /* ── 印クラス ── */
-  function markClass(mark) {
-    if (mark === "\u25ce") return "mark-honmei";  // ◎
-    if (mark === "\u25cb") return "mark-taikou";   // ○
-    if (mark === "\u25b2") return "mark-tanana";   // ▲
-    if (mark === "\u25b3") return "mark-renka";    // △
+  function bikeCircle(num) {
+    const n = parseInt(num) || 0;
+    const cls = (n >= 1 && n <= 9) ? "bike-" + n : "";
+    return '<span class="bike-circle ' + cls + '">' + num + '</span>';
+  }
+
+  function frameCircle(num) {
+    const n = parseInt(num) || 0;
+    const cls = (n >= 1 && n <= 9) ? "frame-" + n : "";
+    return '<span class="frame ' + cls + '">' + num + '</span>';
+  }
+
+  function markClass(m) {
+    if (m === "\u25ce") return "mark-honmei";
+    if (m === "\u25cb") return "mark-taikou";
+    if (m === "\u25b2") return "mark-tanana";
+    if (m === "\u25b3") return "mark-renka";
     return "";
   }
 
-  /* ── ローディング表示 ── */
   function loadingHTML() {
-    return `<div class="loading"><div class="spinner"></div><br>読み込み中...</div>`;
+    return '<div class="loading"><div class="spinner"></div><br>読み込み中...</div>';
   }
 
-  /* ── レース一覧取得・表示 ── */
-  async function loadRaceList(dateStr) {
-    S.date = dateStr;
-    showScreen("racelist");
-    $("#headerTitle").textContent = formatDate(dateStr);
-    const el = $("#racelistScreen");
-    el.innerHTML = loadingHTML();
-
-    try {
-      // 指定日のレースを取得
-      const { data: races, error } = await sb
-        .from("races")
-        .select("race_id, velodrome, velodrome_code, race_number, race_name, grade, rider_count")
-        .eq("date", dateStr)
-        .order("race_id");
-
-      if (error) throw error;
-
-      if (!races || races.length === 0) {
-        el.innerHTML = `<div class="empty-msg">この日のレースデータがありません</div>`;
-        return;
-      }
-
-      // 予測の有無を確認
-      const raceIds = races.map(r => r.race_id);
-      const { data: preds } = await sb
-        .from("predictions")
-        .select("race_id")
-        .in("race_id", raceIds);
-
-      const predSet = new Set((preds || []).map(p => p.race_id));
-
-      // 開催場ごとにグループ化
-      const groups = {};
-      for (const race of races) {
-        const key = race.velodrome || "不明";
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(race);
-      }
-
-      let html = `<div class="date-label">${formatDate(dateStr)} のレース</div>`;
-
-      for (const [venue, venueRaces] of Object.entries(groups)) {
-        html += `<div class="venue-group">`;
-        html += `<div class="venue-name">${venue}</div>`;
-        for (const race of venueRaces) {
-          const hasPred = predSet.has(race.race_id);
-          const title = race.race_name || `${race.race_number}R`;
-          html += `
-            <div class="race-item" data-raceid="${race.race_id}">
-              <span class="race-num">${race.race_number}R</span>
-              <div class="race-info">
-                <div class="race-title">${title}</div>
-              </div>
-              ${gradeBadge(race.grade)}
-              ${hasPred ? "" : '<span style="font-size:11px;color:var(--sub)">予測なし</span>'}
-              <span class="race-arrow">&rsaquo;</span>
-            </div>`;
-        }
-        html += `</div>`;
-      }
-
-      el.innerHTML = html;
-
-      // レースクリックイベント
-      el.querySelectorAll(".race-item").forEach(item => {
-        item.addEventListener("click", () => {
-          loadRaceDetail(item.dataset.raceid);
-        });
-      });
-
-    } catch (err) {
-      el.innerHTML = `<div class="error-msg">読み込みエラー: ${err.message}</div>`;
-    }
-  }
-
-  /* ── レース詳細取得・表示 ── */
-  async function loadRaceDetail(raceId) {
-    S.raceId = raceId;
-    showScreen("detail");
-    const el = $("#detailScreen");
-    el.innerHTML = loadingHTML();
-
-    try {
-      // prediction_detail ビューから取得
-      const { data, error } = await sb
-        .from("prediction_detail")
-        .select("*")
-        .eq("race_id", raceId)
-        .order("predicted_rank");
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        // 予測なし → レース基本情報だけ表示
-        const { data: raceInfo } = await sb
-          .from("races")
-          .select("*")
-          .eq("race_id", raceId)
-          .single();
-
-        let html = "";
-        if (raceInfo) {
-          html += raceInfoHTML(raceInfo);
-        }
-        html += `<div class="empty-msg">このレースの予測データがありません</div>`;
-        el.innerHTML = html;
-        return;
-      }
-
-      const race = data[0];
-      $("#headerTitle").textContent = `${race.velodrome} ${race.race_number}R`;
-
-      // レース情報ヘッダー
-      let html = `
-        <div class="detail-race-info">
-          <div class="detail-race-title">
-            ${race.race_name || `${race.race_number}R`}
-            ${gradeBadge(race.grade)}
-          </div>
-          <div class="detail-race-meta">
-            ${formatDate(race.race_date)} ${race.velodrome}
-            ${race.bank_length ? ` / ${race.bank_length}m` : ""}
-            ${race.rider_count ? ` / ${race.rider_count}車` : ""}
-          </div>
-        </div>`;
-
-      // 結果が存在するか判定
-      const hasResults = data.some(d => d.finish_position != null);
-
-      // 予測テーブル
-      html += `<table class="pred-table"><thead><tr>
-        <th>予</th><th>印</th><th>枠</th><th>車</th>
-        <th style="text-align:left">選手</th><th>級</th><th>得点</th>`;
-
-      if (hasResults) {
-        html += `<th>着</th><th>上り</th>`;
-      }
-      html += `</tr></thead><tbody>`;
-
-      for (const row of data) {
-        const mc = markClass(row.mark);
-        const frameNum = row.frame_number || "-";
-        const bikeNum = row.bike_number || "-";
-        const frameClass = (frameNum >= 1 && frameNum <= 9) ? `frame-${frameNum}` : "";
-
-        html += `<tr>
-          <td>${row.predicted_rank || "-"}</td>
-          <td><span class="mark ${mc}">${row.mark || ""}</span></td>
-          <td><span class="frame ${frameClass}">${frameNum}</span></td>
-          <td>${bikeNum}</td>
-          <td class="rider-name-cell">${row.rider_name || "-"}</td>
-          <td class="class-cell">${row.rider_class || "-"}</td>
-          <td class="score-cell">${row.avg_competition_score != null ? row.avg_competition_score.toFixed(1) : "-"}</td>`;
-
-        if (hasResults) {
-          const fp = row.finish_position;
-          const resultClass = fp === 1 ? "result-1" : fp === 2 ? "result-2" : fp === 3 ? "result-3" : "";
-          html += `<td class="result-cell ${resultClass}">${fp != null ? fp : "-"}</td>`;
-          html += `<td class="score-cell">${row.last_1lap != null ? row.last_1lap.toFixed(1) : "-"}</td>`;
-        }
-
-        html += `</tr>`;
-      }
-
-      html += `</tbody></table>`;
-
-      // ── おすすめ買い目セクション ──
-      if (!hasResults && data.length >= 3) {
-        html += buildBetRecommendation(data);
-      }
-
-      el.innerHTML = html;
-
-    } catch (err) {
-      el.innerHTML = `<div class="error-msg">読み込みエラー: ${err.message}</div>`;
-    }
-  }
-
-  /* ── 買い目推奨ロジック ── */
-  function buildBetRecommendation(data) {
-    // 予測スコアからsoftmaxで勝率推定
-    const scores = data.map(d => d.predicted_score || 0);
-    const maxS = Math.max(...scores);
-    const exps = scores.map(s => Math.exp((s - maxS) * 3)); // 温度パラメータ=3で鋭く
-    const sumExp = exps.reduce((a, b) => a + b, 0);
-    const probs = exps.map(e => e / sumExp);
-
-    // 上位5人の情報
-    const top = data.slice(0, 5).map((d, i) => ({
-      rank: i + 1,
-      mark: d.mark || "",
-      bike: d.bike_number || "?",
-      name: (d.rider_name || "").slice(0, 4),
-      prob: probs[i],
-      score: d.predicted_score || 0,
-    }));
-
-    // 信頼度 = 1位と2位のスコア差
-    const gap12 = top[0].score - top[1].score;
-    const gap23 = top[1].score - (top[2] ? top[2].score : 0);
-    let confLevel, confPct, confClass, confLabel;
-    if (gap12 > 0.25) {
-      confLevel = "high"; confPct = 85; confClass = "confidence-high"; confLabel = "堅いレース";
-    } else if (gap12 > 0.1) {
-      confLevel = "mid"; confPct = 60; confClass = "confidence-mid"; confLabel = "普通";
-    } else {
-      confLevel = "low"; confPct = 35; confClass = "confidence-low"; confLabel = "混戦";
-    }
-
-    let html = `<div class="bet-section">`;
-    html += `<div class="bet-section-title">
-      おすすめ買い目
-      <span style="font-size:11px;color:var(--sub);font-weight:400">${confLabel}</span>
-      <div class="confidence-bar"><div class="confidence-fill ${confClass}" style="width:${confPct}%"></div></div>
-    </div>`;
-
-    // 車番表示ヘルパー
-    const bk = (t) => `<span style="font-weight:700">${t.bike}</span>${t.name}`;
-
-    // ── 2車単（1着-2着の順番指定）──
-    html += `<div class="bet-type-label">2車単（1着-2着）</div>`;
-    const exactas = [
-      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
-      { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" },
-    ];
-    if (confLevel === "low" || confLevel === "mid") {
-      exactas.push({ a: top[1], b: top[0], tag: "中穴", cls: "tag-chuuana" });
-      if (top[2]) exactas.push({ a: top[1], b: top[2], tag: "中穴", cls: "tag-chuuana" });
-    }
-    for (const e of exactas) {
-      const p = (e.a.prob * e.b.prob / (1 - e.a.prob) * 100);
-      html += `<div class="bet-item">
-        <span class="bet-combo">${e.a.bike} → ${e.b.bike}</span>
-        <span class="bet-prob">${e.a.name}→${e.b.name}</span>
-        <span class="bet-tag ${e.cls}">${e.tag}</span>
-      </div>`;
-    }
-
-    // ── 3連単（1-2-3着の順番指定）──
-    if (top.length >= 3) {
-      html += `<div class="bet-type-label">3連単（1着-2着-3着）</div>`;
-      const tris = [
-        { a: top[0], b: top[1], c: top[2], tag: "本命", cls: "tag-honmei" },
-        { a: top[0], b: top[2], c: top[1], tag: "対抗", cls: "tag-honmei" },
-      ];
-      if (confLevel !== "high" && top[3]) {
-        tris.push({ a: top[0], b: top[1], c: top[3], tag: "中穴", cls: "tag-chuuana" });
-        tris.push({ a: top[1], b: top[0], c: top[2], tag: "中穴", cls: "tag-chuuana" });
-      }
-      if (confLevel === "low" && top[3]) {
-        tris.push({ a: top[0], b: top[2], c: top[3], tag: "大穴", cls: "tag-ouana" });
-      }
-      for (const t of tris) {
-        html += `<div class="bet-item">
-          <span class="bet-combo">${t.a.bike} → ${t.b.bike} → ${t.c.bike}</span>
-          <span class="bet-prob">${t.a.name}→${t.b.name}→${t.c.name}</span>
-          <span class="bet-tag ${t.cls}">${t.tag}</span>
-        </div>`;
-      }
-    }
-
-    // ── ワイド（2人が3着以内）──
-    html += `<div class="bet-type-label">ワイド（3着以内の2人）</div>`;
-    const wides = [
-      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
-      { a: top[0], b: top[2], tag: "本命", cls: "tag-honmei" },
-      { a: top[1], b: top[2], tag: "対抗", cls: "tag-honmei" },
-    ];
-    if (top[3]) {
-      wides.push({ a: top[0], b: top[3], tag: "中穴", cls: "tag-chuuana" });
-    }
-    for (const w of wides) {
-      const lo = Math.min(w.a.bike, w.b.bike);
-      const hi = Math.max(w.a.bike, w.b.bike);
-      html += `<div class="bet-item">
-        <span class="bet-combo">${lo} = ${hi}</span>
-        <span class="bet-prob">${w.a.name}-${w.b.name}</span>
-        <span class="bet-tag ${w.cls}">${w.tag}</span>
-      </div>`;
-    }
-
-    html += `</div>`;
-    return html;
-  }
-
-  /* ── レース情報HTMLヘルパー ── */
-  function raceInfoHTML(r) {
-    return `
-      <div class="detail-race-info">
-        <div class="detail-race-title">
-          ${r.race_name || `${r.race_number}R`}
-          ${gradeBadge(r.grade)}
-        </div>
-        <div class="detail-race-meta">
-          ${formatDate(r.date)} ${r.velodrome}
-          ${r.bank_length ? ` / ${r.bank_length}m` : ""}
-        </div>
-      </div>`;
-  }
-
-  /* ── イベントリスナー ── */
-  $("#todayBtn").addEventListener("click", () => loadRaceList(todayStr()));
-  $("#tomorrowBtn").addEventListener("click", () => loadRaceList(tomorrowStr()));
-  $("#dateGoBtn").addEventListener("click", () => {
-    const v = $("#dateInput").value;
-    if (v) loadRaceList(v);
-  });
-  $("#dateInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      const v = $("#dateInput").value;
-      if (v) loadRaceList(v);
-    }
-  });
-
-  $("#backBtn").addEventListener("click", () => {
-    if (S.screen === "detail") {
-      loadRaceList(S.date);
-    } else if (S.screen === "racelist") {
-      showScreen("date");
-    }
-  });
-
-  // デフォルト日付をセット
-  $("#dateInput").value = todayStr();
-
-  /* ── おすすめレース（信頼度>=1.0）を自動ロード ── */
-  (async function loadRecommendations() {
+  /* ── おすすめレース ── */
+  async function loadRecommendations() {
     const el = $("#recommendSection");
     const today = todayStr();
-
     try {
-      // 今日の全予測を取得
       const { data, error } = await sb
         .from("prediction_detail")
         .select("race_id, velodrome, race_number, grade, start_time, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
         .eq("race_date", today)
         .order("race_id")
         .order("predicted_rank");
-
       if (error) throw error;
-      if (!data || data.length === 0) {
-        el.innerHTML = "";
-        return;
-      }
+      if (!data || data.length === 0) { el.innerHTML = ""; return; }
 
-      // レースごとにグループ化
-      const raceGroups = {};
-      for (const row of data) {
-        if (!raceGroups[row.race_id]) raceGroups[row.race_id] = [];
-        raceGroups[row.race_id].push(row);
-      }
+      const groups = {};
+      for (const r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
 
-      // 信頼度を計算してフィルタリング
-      const recommendations = [];
-      for (const [raceId, rows] of Object.entries(raceGroups)) {
+      const recs = [];
+      for (const [id, rows] of Object.entries(groups)) {
         if (rows.length < 5) continue;
-        // 結果が出ているレースはスキップ
         if (rows.some(r => r.finish_position != null)) continue;
-
         const sorted = rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-        const top3Scores = sorted.slice(0, 3).map(r => r.predicted_score);
-        const restScores = sorted.slice(3).map(r => r.predicted_score);
-
-        const confidence = Math.min(...top3Scores) - Math.max(...restScores);
-
-        if (confidence >= 1.0) {
-          recommendations.push({
-            raceId,
-            velodrome: rows[0].velodrome,
-            raceNumber: rows[0].race_number,
-            grade: rows[0].grade,
-            startTime: rows[0].start_time,
-            confidence,
-            top3: sorted.slice(0, 3),
-            top4: sorted[3],
-          });
+        const top3 = sorted.slice(0, 3).map(r => r.predicted_score);
+        const rest = sorted.slice(3).map(r => r.predicted_score);
+        const conf = Math.min(...top3) - Math.max(...rest);
+        if (conf >= 1.0) {
+          recs.push({ id, v: rows[0].velodrome, rn: rows[0].race_number, g: rows[0].grade,
+            t: rows[0].start_time, conf, top3: sorted.slice(0, 3), top4: sorted[3] });
         }
       }
+      if (recs.length === 0) { el.innerHTML = ""; return; }
 
-      if (recommendations.length === 0) {
-        el.innerHTML = "";
+      recs.sort((a, b) => {
+        if (a.t && b.t) return a.t.localeCompare(b.t);
+        if (a.t) return -1; if (b.t) return 1;
+        return b.conf - a.conf;
+      });
+
+      let h = '<div class="section-header">';
+      h += '<div class="section-icon">&#9733;</div>';
+      h += '<span class="section-title">今日のおすすめ</span>';
+      h += '<span class="section-badge">' + recs.length + '件</span>';
+      h += '</div>';
+
+      for (const r of recs) {
+        const confCls = r.conf >= 1.5 ? "conf-very-high" : "conf-high";
+        h += '<div class="rec-card" data-raceid="' + r.id + '">';
+        h += '<div class="rec-top">';
+        h += '<span class="rec-time">' + (r.t || "--:--") + '</span>';
+        h += '<span class="rec-venue">' + r.v + ' ' + r.rn + 'R ' + gradeBadge(r.g) + '</span>';
+        h += '<span class="rec-conf ' + confCls + '">' + r.conf.toFixed(2) + '</span>';
+        h += '</div>';
+        h += '<div class="rec-bikes">';
+        h += '<div class="rec-bike-group"><span class="rec-bike-label">BOX3</span>';
+        for (const p of r.top3) h += bikeCircle(p.bike_number);
+        h += '</div>';
+        if (r.top4) {
+          h += '<span class="rec-plus">+</span>';
+          h += '<div class="rec-bike-group"><span class="rec-bike-label">BOX4</span>';
+          h += bikeCircle(r.top4.bike_number);
+          h += '</div>';
+        }
+        h += '</div>';
+        h += '<div class="rec-riders">';
+        h += r.top3.map(p => (p.rider_name || "").slice(0, 3)).join(" / ");
+        if (r.top4) h += ' / ' + (r.top4.rider_name || "").slice(0, 3);
+        h += '</div>';
+        h += '<span class="rec-arrow">&#8250;</span>';
+        h += '</div>';
+      }
+      el.innerHTML = h;
+      el.querySelectorAll(".rec-card").forEach(function(c) {
+        c.addEventListener("click", function() { loadRaceDetail(c.dataset.raceid); });
+      });
+    } catch (e) { el.innerHTML = ""; }
+  }
+
+  /* ── レース一覧 ── */
+  async function loadRaceList(dateStr) {
+    S.date = dateStr;
+    showScreen("racelist");
+    $("#headerTitle").textContent = formatDate(dateStr);
+    const el = $("#racelistScreen");
+    el.innerHTML = loadingHTML();
+    try {
+      const { data: races, error } = await sb
+        .from("races")
+        .select("race_id, velodrome, velodrome_code, race_number, race_name, grade, rider_count, start_time")
+        .eq("date", dateStr)
+        .order("race_id");
+      if (error) throw error;
+      if (!races || races.length === 0) {
+        el.innerHTML = '<div class="empty-msg"><div class="empty-icon">&#128197;</div>この日のレースデータがありません</div>';
+        return;
+      }
+      const raceIds = races.map(r => r.race_id);
+      const { data: preds } = await sb.from("predictions").select("race_id").in("race_id", raceIds);
+      const predSet = new Set((preds || []).map(p => p.race_id));
+      const groups = {};
+      for (const r of races) { const k = r.velodrome || "不明"; if (!groups[k]) groups[k] = []; groups[k].push(r); }
+
+      let h = '<div class="racelist-date">' + formatDate(dateStr) + ' のレース</div>';
+      for (const [venue, vr] of Object.entries(groups)) {
+        h += '<div class="venue-section">';
+        h += '<div class="venue-header"><span class="venue-label">' + venue + '</span>';
+        h += '<span class="venue-count">' + vr.length + 'R</span></div>';
+        for (const r of vr) {
+          const has = predSet.has(r.race_id);
+          const title = r.race_name || (r.race_number + "R");
+          h += '<div class="race-card" data-raceid="' + r.race_id + '">';
+          h += '<span class="race-num">' + r.race_number + 'R</span>';
+          h += '<span class="race-name">' + title + '</span>';
+          h += '<div class="race-meta">';
+          if (r.start_time) h += '<span style="font-size:11px;color:var(--sub);font-weight:600">' + r.start_time + '</span>';
+          h += gradeBadge(r.grade);
+          if (!has) h += '<span class="no-pred">予測なし</span>';
+          h += '</div>';
+          h += '<span class="race-chevron">&#8250;</span>';
+          h += '</div>';
+        }
+        h += '</div>';
+      }
+      el.innerHTML = h;
+      el.querySelectorAll(".race-card").forEach(function(c) {
+        c.addEventListener("click", function() { loadRaceDetail(c.dataset.raceid); });
+      });
+    } catch (err) {
+      el.innerHTML = '<div class="error-msg">読み込みエラー: ' + err.message + '</div>';
+    }
+  }
+
+  /* ── レース詳細 ── */
+  async function loadRaceDetail(raceId) {
+    S.raceId = raceId;
+    showScreen("detail");
+    const el = $("#detailScreen");
+    el.innerHTML = loadingHTML();
+    try {
+      const { data, error } = await sb.from("prediction_detail").select("*").eq("race_id", raceId).order("predicted_rank");
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        const { data: ri } = await sb.from("races").select("*").eq("race_id", raceId).single();
+        let h = "";
+        if (ri) {
+          h += '<div class="detail-header"><div class="detail-title">' + (ri.race_name || ri.race_number + "R") + ' ' + gradeBadge(ri.grade) + '</div>';
+          h += '<div class="detail-meta"><span>' + formatDate(ri.date) + '</span><span>' + ri.velodrome + '</span></div></div>';
+        }
+        h += '<div class="empty-msg"><div class="empty-icon">&#128202;</div>このレースの予測データがありません</div>';
+        el.innerHTML = h;
         return;
       }
 
-      // 発走時刻順 → 信頼度順（時刻がない場合）
-      recommendations.sort((a, b) => {
-        if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
-        if (a.startTime) return -1;
-        if (b.startTime) return 1;
-        return b.confidence - a.confidence;
-      });
+      const race = data[0];
+      $("#headerTitle").textContent = race.velodrome + " " + race.race_number + "R";
 
-      let html = '<div class="recommend-title">今日のおすすめ（信頼度1.0+）</div>';
+      let h = '<div class="detail-header">';
+      h += '<div class="detail-title">' + (race.race_name || race.race_number + "R") + ' ' + gradeBadge(race.grade) + '</div>';
+      h += '<div class="detail-meta">';
+      h += '<span class="detail-meta-item">' + formatDate(race.race_date) + '</span>';
+      h += '<span class="detail-meta-item">' + race.velodrome + '</span>';
+      if (race.start_time) h += '<span class="detail-meta-item">' + race.start_time + '発走</span>';
+      if (race.bank_length) h += '<span class="detail-meta-item">' + race.bank_length + 'm</span>';
+      if (race.rider_count) h += '<span class="detail-meta-item">' + race.rider_count + '車</span>';
+      h += '</div></div>';
 
-      for (const rec of recommendations) {
-        const top3Bikes = rec.top3.map(r => r.bike_number).join("-");
-        const top3Names = rec.top3.map(r => (r.rider_name || "").slice(0, 3)).join("・");
-        const plus4 = rec.top4 ? "+" + rec.top4.bike_number + "番" : "";
-        const timeStr = rec.startTime ? rec.startTime : "";
+      const hasRes = data.some(d => d.finish_position != null);
+      h += '<table class="pred-table"><thead><tr>';
+      h += '<th>予</th><th>印</th><th>枠</th><th>車</th><th style="text-align:left">選手</th><th>級</th><th>得点</th>';
+      if (hasRes) h += '<th>着</th><th>上り</th>';
+      h += '</tr></thead><tbody>';
 
-        html += '<div class="recommend-card" data-raceid="' + rec.raceId + '">';
-        html += '<div class="recommend-header">';
-        html += '<div class="recommend-venue-wrap">';
-        html += '<span class="recommend-venue">' + rec.velodrome + " " + rec.raceNumber + "R</span>";
-        html += gradeBadge(rec.grade);
-        html += "</div>";
-        if (timeStr) html += '<span class="recommend-time">' + timeStr + "</span>";
-        html += '<span class="recommend-confidence">信頼度 ' + rec.confidence.toFixed(2) + "</span>";
-        html += "</div>";
-        html += '<div class="recommend-bets">';
-        html += '<div class="recommend-bet"><span class="recommend-bet-label">BOX3:</span> ' + top3Bikes + "</div>";
-        if (plus4) html += '<div class="recommend-bet"><span class="recommend-bet-label">BOX4:</span> ' + plus4 + "</div>";
-        html += "</div>";
-        html += '<div class="recommend-riders">' + top3Names + "</div>";
-        html += "</div>";
+      for (const row of data) {
+        const mc = markClass(row.mark);
+        const fn = row.frame_number || "-";
+        const bn = row.bike_number || "-";
+        const isTop3 = row.predicted_rank <= 3;
+        h += '<tr' + (isTop3 ? ' class="top3-row"' : '') + '>';
+        h += '<td>' + (row.predicted_rank || "-") + '</td>';
+        h += '<td><span class="mark ' + mc + '">' + (row.mark || "") + '</span></td>';
+        h += '<td>' + frameCircle(fn) + '</td>';
+        h += '<td>' + bn + '</td>';
+        h += '<td class="rider-name-cell">' + (row.rider_name || "-") + '</td>';
+        h += '<td class="class-cell">' + (row.rider_class || "-") + '</td>';
+        h += '<td class="score-cell">' + (row.avg_competition_score != null ? row.avg_competition_score.toFixed(1) : "-") + '</td>';
+        if (hasRes) {
+          const fp = row.finish_position;
+          const rc = fp === 1 ? "result-1" : fp === 2 ? "result-2" : fp === 3 ? "result-3" : "";
+          h += '<td class="result-cell ' + rc + '">' + (fp != null ? fp : "-") + '</td>';
+          h += '<td class="score-cell">' + (row.last_1lap != null ? row.last_1lap.toFixed(1) : "-") + '</td>';
+        }
+        h += '</tr>';
       }
+      h += '</tbody></table>';
 
-      el.innerHTML = html;
-
-      // カードクリックで詳細へ
-      el.querySelectorAll(".recommend-card").forEach(function(card) {
-        card.addEventListener("click", function() {
-          loadRaceDetail(card.dataset.raceid);
-        });
-      });
-
-    } catch (e) {
-      el.innerHTML = "";
+      if (!hasRes && data.length >= 3) h += buildBetSection(data);
+      el.innerHTML = h;
+    } catch (err) {
+      el.innerHTML = '<div class="error-msg">読み込みエラー: ' + err.message + '</div>';
     }
-  })();
+  }
 
-  // 最新データ日付を取得して表示
+  /* ── 買い目推奨 ── */
+  function buildBetSection(data) {
+    const scores = data.map(d => d.predicted_score || 0);
+    const maxS = Math.max(...scores);
+    const exps = scores.map(s => Math.exp((s - maxS) * 3));
+    const sumE = exps.reduce((a, b) => a + b, 0);
+    const probs = exps.map(e => e / sumE);
+    const top = data.slice(0, 5).map((d, i) => ({
+      rank: i+1, mark: d.mark || "", bike: d.bike_number || "?",
+      name: (d.rider_name || "").slice(0, 4), prob: probs[i], score: d.predicted_score || 0,
+    }));
+
+    const gap12 = top[0].score - top[1].score;
+    let lvl, pct, fillCls, label;
+    if (gap12 > 0.25) { lvl = "high"; pct = 85; fillCls = "conf-fill-high"; label = "堅いレース"; }
+    else if (gap12 > 0.1) { lvl = "mid"; pct = 60; fillCls = "conf-fill-mid"; label = "普通"; }
+    else { lvl = "low"; pct = 35; fillCls = "conf-fill-low"; label = "混戦"; }
+
+    let h = '<div class="bet-section">';
+    h += '<div class="bet-header"><span class="bet-title">おすすめ買い目</span>';
+    h += '<span class="bet-conf-label" style="background:' + (lvl === "high" ? "#fef2f2;color:#dc2626" : lvl === "mid" ? "#fff7ed;color:#ea580c" : "#f1f5f9;color:#64748b") + '">' + label + '</span>';
+    h += '<div class="conf-bar"><div class="conf-fill ' + fillCls + '" style="width:' + pct + '%"></div></div>';
+    h += '</div>';
+
+    h += '<div class="bet-group-label">2車単（1着-2着）</div>';
+    const ex = [{ a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" }, { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" }];
+    if (lvl !== "high") {
+      ex.push({ a: top[1], b: top[0], tag: "中穴", cls: "tag-chuuana" });
+      if (top[2]) ex.push({ a: top[1], b: top[2], tag: "中穴", cls: "tag-chuuana" });
+    }
+    for (const e of ex) {
+      h += '<div class="bet-row"><span class="bet-combo">' + e.a.bike + ' → ' + e.b.bike + '</span>';
+      h += '<span class="bet-names">' + e.a.name + '→' + e.b.name + '</span>';
+      h += '<span class="bet-tag ' + e.cls + '">' + e.tag + '</span></div>';
+    }
+
+    if (top.length >= 3) {
+      h += '<div class="bet-group-label">3連単（1着-2着-3着）</div>';
+      const tr = [
+        { a: top[0], b: top[1], c: top[2], tag: "本命", cls: "tag-honmei" },
+        { a: top[0], b: top[2], c: top[1], tag: "対抗", cls: "tag-honmei" },
+      ];
+      if (lvl !== "high" && top[3]) {
+        tr.push({ a: top[0], b: top[1], c: top[3], tag: "中穴", cls: "tag-chuuana" });
+        tr.push({ a: top[1], b: top[0], c: top[2], tag: "中穴", cls: "tag-chuuana" });
+      }
+      if (lvl === "low" && top[3]) tr.push({ a: top[0], b: top[2], c: top[3], tag: "大穴", cls: "tag-ouana" });
+      for (const t of tr) {
+        h += '<div class="bet-row"><span class="bet-combo">' + t.a.bike + ' → ' + t.b.bike + ' → ' + t.c.bike + '</span>';
+        h += '<span class="bet-names">' + t.a.name + '→' + t.b.name + '→' + t.c.name + '</span>';
+        h += '<span class="bet-tag ' + t.cls + '">' + t.tag + '</span></div>';
+      }
+    }
+
+    h += '<div class="bet-group-label">ワイド（3着以内の2人）</div>';
+    const wd = [
+      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
+      { a: top[0], b: top[2], tag: "本命", cls: "tag-honmei" },
+      { a: top[1], b: top[2], tag: "対抗", cls: "tag-honmei" },
+    ];
+    if (top[3]) wd.push({ a: top[0], b: top[3], tag: "中穴", cls: "tag-chuuana" });
+    for (const w of wd) {
+      const lo = Math.min(w.a.bike, w.b.bike), hi = Math.max(w.a.bike, w.b.bike);
+      h += '<div class="bet-row"><span class="bet-combo">' + lo + ' = ' + hi + '</span>';
+      h += '<span class="bet-names">' + w.a.name + '-' + w.b.name + '</span>';
+      h += '<span class="bet-tag ' + w.cls + '">' + w.tag + '</span></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  /* ── イベント ── */
+  $("#todayBtn").addEventListener("click", function() { loadRaceList(todayStr()); });
+  $("#tomorrowBtn").addEventListener("click", function() { loadRaceList(tomorrowStr()); });
+  $("#dateGoBtn").addEventListener("click", function() { var v = $("#dateInput").value; if (v) loadRaceList(v); });
+  $("#dateInput").addEventListener("keydown", function(e) { if (e.key === "Enter") { var v = $("#dateInput").value; if (v) loadRaceList(v); } });
+  $("#backBtn").addEventListener("click", function() {
+    if (S.screen === "detail") loadRaceList(S.date);
+    else if (S.screen === "racelist") showScreen("date");
+  });
+
+  $("#dateInput").value = todayStr();
+  loadRecommendations();
+
   (async function loadLatestDates() {
     const el = $("#latestInfo");
     try {
-      // 最新5日分の開催日を取得
-      const { data: dates, error: err2 } = await sb
-        .from("races")
-        .select("date")
-        .order("date", { ascending: false })
-        .limit(100);
-
-      if (err2) throw err2;
-      if (!dates || dates.length === 0) {
-        el.innerHTML = '<div style="color:var(--sub);font-size:13px">データがありません</div>';
-        return;
+      const { data: dates, error } = await sb.from("races").select("date").order("date", { ascending: false }).limit(100);
+      if (error) throw error;
+      if (!dates || dates.length === 0) { el.innerHTML = '<div class="recent-label">データなし</div>'; return; }
+      const unique = [...new Set(dates.map(d => d.date))].slice(0, 5);
+      let h = '<div class="recent-label">直近の開催</div>';
+      for (const d of unique) {
+        h += '<button class="recent-btn" data-date="' + d + '">';
+        h += '<span class="date-main">' + formatDate(d) + '</span>';
+        h += '<span class="date-iso">' + d + '</span>';
+        h += '<span class="arrow">&#8250;</span>';
+        h += '</button>';
       }
-
-      // ユニーク日付を取得（最新5日分）
-      const uniqueDates = [...new Set(dates.map(d => d.date))].slice(0, 5);
-
-      let html = '<div style="font-size:13px;color:var(--sub);margin-bottom:8px">データがある直近の日付</div>';
-      for (const d of uniqueDates) {
-        html += `<button class="latest-date-btn" data-date="${d}" style="
-          display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:4px;
-          background:var(--accent-light);border:none;border-radius:8px;cursor:pointer;
-          font-size:14px;font-family:inherit;color:var(--text);min-height:44px;
-        ">${formatDate(d)} <span style="color:var(--sub);font-size:12px">${d}</span></button>`;
-      }
-      el.innerHTML = html;
-
-      el.querySelectorAll(".latest-date-btn").forEach(btn => {
-        btn.addEventListener("click", () => loadRaceList(btn.dataset.date));
+      el.innerHTML = h;
+      el.querySelectorAll(".recent-btn").forEach(function(b) {
+        b.addEventListener("click", function() { loadRaceList(b.dataset.date); });
       });
-    } catch (e) {
-      el.innerHTML = '';
-    }
+    } catch (e) { el.innerHTML = ""; }
   })();
-
 })();
 </script>
 </body>
