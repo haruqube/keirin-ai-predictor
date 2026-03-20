@@ -377,6 +377,16 @@ body {
 .race-meta { display: flex; align-items: center; gap: 6px; }
 .no-pred { font-size: 10px; color: var(--muted); font-weight: 500; }
 .race-chevron { color: var(--muted); font-size: 14px; }
+.race-conf {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.race-conf-high { background: #fef2f2; color: #dc2626; }
+.race-conf-mid { background: #fff7ed; color: #ea580c; }
+.race-conf-low { background: #f1f5f9; color: #64748b; }
 
 /* グレードバッジ */
 .grade {
@@ -768,8 +778,33 @@ body {
         return;
       }
       const raceIds = races.map(r => r.race_id);
-      const { data: preds } = await sb.from("predictions").select("race_id").in("race_id", raceIds);
+      const { data: preds } = await sb.from("predictions").select("race_id, predicted_score, predicted_rank").in("race_id", raceIds).order("predicted_rank");
       const predSet = new Set((preds || []).map(p => p.race_id));
+
+      // 各レースの信頼度を計算
+      const raceConf = {};
+      if (preds && preds.length > 0) {
+        const byRace = {};
+        for (const p of preds) { if (!byRace[p.race_id]) byRace[p.race_id] = []; byRace[p.race_id].push(p); }
+        for (const [rid, rows] of Object.entries(byRace)) {
+          if (rows.length < 4) continue;
+          rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
+          const top3 = rows.slice(0, 3).map(r => r.predicted_score);
+          const rest = rows.slice(3).map(r => r.predicted_score);
+          raceConf[rid] = Math.min(...top3) - Math.max(...rest);
+        }
+      }
+
+      function confBadge(conf) {
+        if (conf == null) return '';
+        var cls, label;
+        if (conf >= 1.5) { cls = 'race-conf-high'; label = '信頼度 ' + conf.toFixed(1); }
+        else if (conf >= 1.0) { cls = 'race-conf-high'; label = '信頼度 ' + conf.toFixed(1); }
+        else if (conf >= 0.5) { cls = 'race-conf-mid'; label = '信頼度 ' + conf.toFixed(1); }
+        else { cls = 'race-conf-low'; label = '信頼度 ' + conf.toFixed(1); }
+        return '<span class="race-conf ' + cls + '">' + label + '</span>';
+      }
+
       const groups = {};
       for (const r of races) { const k = r.velodrome || "不明"; if (!groups[k]) groups[k] = []; groups[k].push(r); }
 
@@ -781,12 +816,14 @@ body {
         for (const r of vr) {
           const has = predSet.has(r.race_id);
           const title = r.race_name || (r.race_number + "R");
+          const conf = raceConf[r.race_id];
           h += '<div class="race-card" data-raceid="' + r.race_id + '">';
           h += '<span class="race-num">' + r.race_number + 'R</span>';
           h += '<span class="race-name">' + title + '</span>';
           h += '<div class="race-meta">';
           if (r.start_time) h += '<span style="font-size:11px;color:var(--sub);font-weight:600">' + r.start_time + '</span>';
           h += gradeBadge(r.grade);
+          if (has && conf != null) h += confBadge(conf);
           if (!has) h += '<span class="no-pred">予測なし</span>';
           h += '</div>';
           h += '<span class="race-chevron">&#8250;</span>';
