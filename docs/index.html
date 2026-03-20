@@ -316,31 +316,88 @@ body {
 .recent-btn .date-iso { font-size: 11px; color: var(--muted); }
 .recent-btn .arrow { color: var(--muted); }
 
-/* ── レース一覧 ── */
-.racelist-screen { padding: 12px 16px 24px; }
-.racelist-date {
+/* ── 場選択画面 ── */
+.venue-screen { padding: 12px 16px 24px; }
+.venue-screen-date {
   font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   margin-bottom: 12px;
-  text-transform: uppercase;
   letter-spacing: 0.3px;
 }
-.venue-section { margin-bottom: 16px; }
-.venue-header {
+.venue-card {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  cursor: pointer;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  transition: transform 0.1s;
+  position: relative;
+  overflow: hidden;
+}
+.venue-card:active { transform: scale(0.98); }
+.venue-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+}
+.venue-card.has-rec::before { background: linear-gradient(180deg, #dc2626, #f97316); }
+.venue-name {
+  font-size: 18px;
+  font-weight: 800;
+  min-width: 70px;
+}
+.venue-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.venue-race-count {
+  font-size: 13px;
+  color: var(--sub);
+  font-weight: 600;
+}
+.venue-conf-summary {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.venue-conf-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.venue-conf-high { background: #fef2f2; color: #dc2626; }
+.venue-conf-mid { background: #fff7ed; color: #ea580c; }
+.venue-conf-low { background: #f1f5f9; color: #64748b; }
+.venue-time-range {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.venue-chevron { color: var(--muted); font-size: 18px; }
+
+/* ── レース一覧 ── */
+.racelist-screen { padding: 12px 16px 24px; }
+.racelist-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 0 8px;
-  border-bottom: 2px solid var(--accent);
-  margin-bottom: 6px;
+  margin-bottom: 12px;
 }
-.venue-label {
-  font-size: 15px;
+.racelist-venue-name {
+  font-size: 18px;
   font-weight: 800;
 }
-.venue-count {
-  font-size: 11px;
+.racelist-date-label {
+  font-size: 12px;
   color: var(--muted);
   font-weight: 600;
 }
@@ -612,7 +669,10 @@ body {
   <div id="latestInfo" class="recent-section"></div>
 </div>
 
-<!-- レース一覧 -->
+<!-- 場選択 -->
+<div id="venueScreen" class="venue-screen hidden"></div>
+
+<!-- レース一覧（1場分） -->
 <div id="racelistScreen" class="racelist-screen hidden"></div>
 
 <!-- レース詳細 -->
@@ -628,11 +688,12 @@ body {
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const $ = (s) => document.querySelector(s);
-  const S = { screen: "date", date: null, raceId: null };
+  const S = { screen: "date", date: null, venue: null, raceId: null };
 
   function showScreen(name) {
     S.screen = name;
     $("#dateScreen").classList.toggle("hidden", name !== "date");
+    $("#venueScreen").classList.toggle("hidden", name !== "venue");
     $("#racelistScreen").classList.toggle("hidden", name !== "racelist");
     $("#detailScreen").classList.toggle("hidden", name !== "detail");
     $("#backBtn").classList.toggle("hidden", name === "date");
@@ -759,76 +820,138 @@ body {
     } catch (e) { el.innerHTML = ""; }
   }
 
-  /* ── レース一覧 ── */
-  async function loadRaceList(dateStr) {
+  // 信頼度計算ユーティリティ
+  function calcRaceConf(predsByRace) {
+    const conf = {};
+    for (const [rid, rows] of Object.entries(predsByRace)) {
+      if (rows.length < 4) continue;
+      rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
+      const top3 = rows.slice(0, 3).map(r => r.predicted_score);
+      const rest = rows.slice(3).map(r => r.predicted_score);
+      conf[rid] = Math.min(...top3) - Math.max(...rest);
+    }
+    return conf;
+  }
+
+  function confBadge(conf) {
+    if (conf == null) return '';
+    var cls;
+    if (conf >= 1.0) cls = 'race-conf-high';
+    else if (conf >= 0.5) cls = 'race-conf-mid';
+    else cls = 'race-conf-low';
+    return '<span class="race-conf ' + cls + '">信頼度 ' + conf.toFixed(1) + '</span>';
+  }
+
+  // キャッシュ: 日付ごとのレース・予測データ
+  let cachedDate = null, cachedRaces = null, cachedRaceConf = null, cachedPredSet = null;
+
+  async function fetchDateData(dateStr) {
+    if (cachedDate === dateStr && cachedRaces) return;
+    const { data: races, error } = await sb
+      .from("races")
+      .select("race_id, velodrome, velodrome_code, race_number, race_name, grade, rider_count, start_time")
+      .eq("date", dateStr)
+      .order("race_id");
+    if (error) throw error;
+    cachedRaces = races || [];
+    cachedDate = dateStr;
+    if (cachedRaces.length === 0) { cachedRaceConf = {}; cachedPredSet = new Set(); return; }
+    const raceIds = cachedRaces.map(r => r.race_id);
+    const { data: preds } = await sb.from("predictions").select("race_id, predicted_score, predicted_rank").in("race_id", raceIds).order("predicted_rank");
+    cachedPredSet = new Set((preds || []).map(p => p.race_id));
+    const byRace = {};
+    for (const p of (preds || [])) { if (!byRace[p.race_id]) byRace[p.race_id] = []; byRace[p.race_id].push(p); }
+    cachedRaceConf = calcRaceConf(byRace);
+  }
+
+  /* ── 場選択画面 ── */
+  async function loadVenueList(dateStr) {
     S.date = dateStr;
-    showScreen("racelist");
+    showScreen("venue");
     $("#headerTitle").textContent = formatDate(dateStr);
-    const el = $("#racelistScreen");
+    const el = $("#venueScreen");
     el.innerHTML = loadingHTML();
     try {
-      const { data: races, error } = await sb
-        .from("races")
-        .select("race_id, velodrome, velodrome_code, race_number, race_name, grade, rider_count, start_time")
-        .eq("date", dateStr)
-        .order("race_id");
-      if (error) throw error;
-      if (!races || races.length === 0) {
+      await fetchDateData(dateStr);
+      if (cachedRaces.length === 0) {
         el.innerHTML = '<div class="empty-msg"><div class="empty-icon">&#128197;</div>この日のレースデータがありません</div>';
         return;
       }
-      const raceIds = races.map(r => r.race_id);
-      const { data: preds } = await sb.from("predictions").select("race_id, predicted_score, predicted_rank").in("race_id", raceIds).order("predicted_rank");
-      const predSet = new Set((preds || []).map(p => p.race_id));
-
-      // 各レースの信頼度を計算
-      const raceConf = {};
-      if (preds && preds.length > 0) {
-        const byRace = {};
-        for (const p of preds) { if (!byRace[p.race_id]) byRace[p.race_id] = []; byRace[p.race_id].push(p); }
-        for (const [rid, rows] of Object.entries(byRace)) {
-          if (rows.length < 4) continue;
-          rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-          const top3 = rows.slice(0, 3).map(r => r.predicted_score);
-          const rest = rows.slice(3).map(r => r.predicted_score);
-          raceConf[rid] = Math.min(...top3) - Math.max(...rest);
-        }
-      }
-
-      function confBadge(conf) {
-        if (conf == null) return '';
-        var cls, label;
-        if (conf >= 1.5) { cls = 'race-conf-high'; label = '信頼度 ' + conf.toFixed(1); }
-        else if (conf >= 1.0) { cls = 'race-conf-high'; label = '信頼度 ' + conf.toFixed(1); }
-        else if (conf >= 0.5) { cls = 'race-conf-mid'; label = '信頼度 ' + conf.toFixed(1); }
-        else { cls = 'race-conf-low'; label = '信頼度 ' + conf.toFixed(1); }
-        return '<span class="race-conf ' + cls + '">' + label + '</span>';
-      }
 
       const groups = {};
-      for (const r of races) { const k = r.velodrome || "不明"; if (!groups[k]) groups[k] = []; groups[k].push(r); }
+      for (const r of cachedRaces) { const k = r.velodrome || "不明"; if (!groups[k]) groups[k] = []; groups[k].push(r); }
 
-      let h = '<div class="racelist-date">' + formatDate(dateStr) + ' のレース</div>';
+      let h = '<div class="venue-screen-date">' + formatDate(dateStr) + ' の開催場</div>';
       for (const [venue, vr] of Object.entries(groups)) {
-        h += '<div class="venue-section">';
-        h += '<div class="venue-header"><span class="venue-label">' + venue + '</span>';
-        h += '<span class="venue-count">' + vr.length + 'R</span></div>';
-        for (const r of vr) {
-          const has = predSet.has(r.race_id);
-          const title = r.race_name || (r.race_number + "R");
-          const conf = raceConf[r.race_id];
-          h += '<div class="race-card" data-raceid="' + r.race_id + '">';
-          h += '<span class="race-num">' + r.race_number + 'R</span>';
-          h += '<span class="race-name">' + title + '</span>';
-          h += '<div class="race-meta">';
-          if (r.start_time) h += '<span style="font-size:11px;color:var(--sub);font-weight:600">' + r.start_time + '</span>';
-          h += gradeBadge(r.grade);
-          if (has && conf != null) h += confBadge(conf);
-          if (!has) h += '<span class="no-pred">予測なし</span>';
-          h += '</div>';
-          h += '<span class="race-chevron">&#8250;</span>';
+        // 場ごとの信頼度集計
+        const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
+        const highCount = confs.filter(c => c >= 1.0).length;
+        const midCount = confs.filter(c => c >= 0.5 && c < 1.0).length;
+        const hasRec = highCount > 0;
+
+        // 時間帯
+        const times = vr.map(r => r.start_time).filter(Boolean);
+        const timeRange = times.length >= 2 ? times[0] + ' - ' + times[times.length - 1] : (times[0] || '');
+
+        h += '<div class="venue-card' + (hasRec ? ' has-rec' : '') + '" data-venue="' + venue + '">';
+        h += '<span class="venue-name">' + venue + '</span>';
+        h += '<div class="venue-info">';
+        h += '<span class="venue-race-count">' + vr.length + 'レース</span>';
+        if (timeRange) h += '<span class="venue-time-range">' + timeRange + '</span>';
+        if (confs.length > 0) {
+          h += '<div class="venue-conf-summary">';
+          if (highCount > 0) h += '<span class="venue-conf-tag venue-conf-high">高信頼 ' + highCount + 'R</span>';
+          if (midCount > 0) h += '<span class="venue-conf-tag venue-conf-mid">中信頼 ' + midCount + 'R</span>';
           h += '</div>';
         }
+        h += '</div>';
+        h += '<span class="venue-chevron">&#8250;</span>';
+        h += '</div>';
+      }
+      el.innerHTML = h;
+      el.querySelectorAll(".venue-card").forEach(function(c) {
+        c.addEventListener("click", function() { loadRaceList(dateStr, c.dataset.venue); });
+      });
+    } catch (err) {
+      el.innerHTML = '<div class="error-msg">読み込みエラー: ' + err.message + '</div>';
+    }
+  }
+
+  /* ── レース一覧（1場分） ── */
+  async function loadRaceList(dateStr, venue) {
+    S.date = dateStr;
+    S.venue = venue;
+    showScreen("racelist");
+    $("#headerTitle").textContent = venue + ' ' + formatDate(dateStr);
+    const el = $("#racelistScreen");
+    el.innerHTML = loadingHTML();
+    try {
+      await fetchDateData(dateStr);
+      const venueRaces = cachedRaces.filter(r => r.velodrome === venue);
+      if (venueRaces.length === 0) {
+        el.innerHTML = '<div class="empty-msg"><div class="empty-icon">&#128197;</div>この場のレースデータがありません</div>';
+        return;
+      }
+
+      let h = '<div class="racelist-header">';
+      h += '<span class="racelist-venue-name">' + venue + '</span>';
+      h += '<span class="racelist-date-label">' + formatDate(dateStr) + ' / ' + venueRaces.length + 'R</span>';
+      h += '</div>';
+
+      for (const r of venueRaces) {
+        const has = cachedPredSet.has(r.race_id);
+        const title = r.race_name || (r.race_number + "R");
+        const conf = cachedRaceConf[r.race_id];
+        h += '<div class="race-card" data-raceid="' + r.race_id + '">';
+        h += '<span class="race-num">' + r.race_number + 'R</span>';
+        h += '<span class="race-name">' + title + '</span>';
+        h += '<div class="race-meta">';
+        if (r.start_time) h += '<span style="font-size:11px;color:var(--sub);font-weight:600">' + r.start_time + '</span>';
+        h += gradeBadge(r.grade);
+        if (has && conf != null) h += confBadge(conf);
+        if (!has) h += '<span class="no-pred">予測なし</span>';
+        h += '</div>';
+        h += '<span class="race-chevron">&#8250;</span>';
         h += '</div>';
       }
       el.innerHTML = h;
@@ -862,6 +985,8 @@ body {
       }
 
       const race = data[0];
+      if (!S.venue) S.venue = race.velodrome;
+      if (!S.date) S.date = race.race_date;
       $("#headerTitle").textContent = race.velodrome + " " + race.race_number + "R";
 
       let h = '<div class="detail-header">';
@@ -982,13 +1107,14 @@ body {
   }
 
   /* ── イベント ── */
-  $("#todayBtn").addEventListener("click", function() { loadRaceList(todayStr()); });
-  $("#tomorrowBtn").addEventListener("click", function() { loadRaceList(tomorrowStr()); });
-  $("#dateGoBtn").addEventListener("click", function() { var v = $("#dateInput").value; if (v) loadRaceList(v); });
-  $("#dateInput").addEventListener("keydown", function(e) { if (e.key === "Enter") { var v = $("#dateInput").value; if (v) loadRaceList(v); } });
+  $("#todayBtn").addEventListener("click", function() { loadVenueList(todayStr()); });
+  $("#tomorrowBtn").addEventListener("click", function() { loadVenueList(tomorrowStr()); });
+  $("#dateGoBtn").addEventListener("click", function() { var v = $("#dateInput").value; if (v) loadVenueList(v); });
+  $("#dateInput").addEventListener("keydown", function(e) { if (e.key === "Enter") { var v = $("#dateInput").value; if (v) loadVenueList(v); } });
   $("#backBtn").addEventListener("click", function() {
-    if (S.screen === "detail") loadRaceList(S.date);
-    else if (S.screen === "racelist") showScreen("date");
+    if (S.screen === "detail") loadRaceList(S.date, S.venue);
+    else if (S.screen === "racelist") loadVenueList(S.date);
+    else if (S.screen === "venue") showScreen("date");
   });
 
   $("#dateInput").value = todayStr();
@@ -1011,7 +1137,7 @@ body {
       }
       el.innerHTML = h;
       el.querySelectorAll(".recent-btn").forEach(function(b) {
-        b.addEventListener("click", function() { loadRaceList(b.dataset.date); });
+        b.addEventListener("click", function() { loadVenueList(b.dataset.date); });
       });
     } catch (e) { el.innerHTML = ""; }
   })();
