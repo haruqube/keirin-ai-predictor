@@ -1,0 +1,65 @@
+name: Daily Prediction (Morning)
+
+on:
+  schedule:
+    - cron: '30 15 * * *'  # 0:30 JST (= 15:30 UTC previous day)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '対象日 (YYYYMMDD) ※空欄=今日JST'
+        required: false
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download data assets
+        run: |
+          mkdir -p db results
+          gh release download data-latest -p "keirin.db" -D db/
+          gh release download data-latest -p "model_lgbm.pkl" -D results/
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}" >> .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+
+      - name: Run morning pipeline
+        run: |
+          DATE="${{ github.event.inputs.date }}"
+          if [ -z "$DATE" ]; then
+            DATE=$(TZ=Asia/Tokyo date +%Y%m%d)
+          fi
+          echo "Target date: $DATE"
+          python scripts/daily_pipeline.py --morning --date "$DATE"
+
+      - name: Upload updated DB
+        if: always()
+        run: gh release upload data-latest db/keirin.db --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-logs-${{ github.run_number }}
+          path: results/logs/
+          retention-days: 30
