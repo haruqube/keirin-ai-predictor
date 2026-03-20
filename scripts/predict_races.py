@@ -91,6 +91,18 @@ def apply_line_bonus(df, entries, line_formation):
     return bonuses
 
 
+def get_today_jyo_codes(scraper: KeirinScraper) -> list[str]:
+    """netkeirinトップページから本日開催中の場コードを自動取得"""
+    url = f"{NETKEIRIN_BASE_URL}/top/"
+    html = scraper._get(url)
+    codes = re.findall(r"jyo_cd=(\d+)&rf=toptodayrace", html)
+    result = sorted(set(codes))
+    if result:
+        names = [VELODROME_CODES.get(c, f"?({c})") for c in result]
+        logger.info("Auto-detected %d velodromes: %s", len(result), ", ".join(names))
+    return result
+
+
 def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str]) -> list[str]:
     """race_programページから指定日の全race_idを効率取得
 
@@ -162,7 +174,12 @@ def predict_races(date: str, velodromes: str = "major"):
     conn = get_connection()
 
     # 場コード選択
-    if velodromes == "all":
+    if velodromes == "auto":
+        jyo_codes = get_today_jyo_codes(scraper)
+        if not jyo_codes:
+            logger.warning("Auto-detect failed, falling back to all")
+            jyo_codes = list(VELODROME_CODES.keys())
+    elif velodromes == "all":
         jyo_codes = list(VELODROME_CODES.keys())
     elif velodromes == "major":
         jyo_codes = MAJOR_CODES
@@ -287,7 +304,7 @@ def predict_races(date: str, velodromes: str = "major"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="競輪レース予測")
     parser.add_argument("--date", required=True, help="予測日 (YYYYMMDD)")
-    parser.add_argument("--velodromes", default="major",
-                        help="場コード(カンマ区切り) or 'all' or 'major'")
+    parser.add_argument("--velodromes", default="auto",
+                        help="'auto'(トップページから自動検出) or 場コード(カンマ区切り) or 'all' or 'major'")
     args = parser.parse_args()
     predict_races(args.date, args.velodromes)
