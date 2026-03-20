@@ -163,7 +163,8 @@ CREATE POLICY "anon_select_prediction_results" ON prediction_results FOR SELECT 
 -- フロントエンドから1クエリで予測詳細を取得
 -- ============================================================
 
-CREATE OR REPLACE VIEW prediction_detail AS
+CREATE OR REPLACE VIEW prediction_detail
+WITH (security_invoker = on) AS
 SELECT
     p.race_id,
     r.date AS race_date,
