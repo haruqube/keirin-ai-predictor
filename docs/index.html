@@ -333,6 +333,84 @@ body {
 .tag-chuuana { background: var(--grade-g2); }
 .tag-ouana { background: var(--grade-gp); }
 
+/* ── おすすめレースセクション ── */
+.recommend-section { margin-bottom: 20px; }
+.recommend-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--mark-honmei);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.recommend-card {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  cursor: pointer;
+  border-left: 4px solid var(--mark-honmei);
+  transition: background 0.1s;
+}
+.recommend-card:active { background: var(--accent-light); }
+.recommend-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.recommend-venue {
+  font-size: 15px;
+  font-weight: 700;
+}
+.recommend-venue-wrap { flex: 1; display: flex; align-items: center; gap: 6px; }
+.recommend-confidence {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mark-honmei);
+  background: #fce4ec;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.recommend-time {
+  font-size: 13px;
+  color: var(--sub);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.recommend-bets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.recommend-bet {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border-radius: 6px;
+}
+.recommend-bet-label {
+  font-weight: 700;
+  color: var(--accent);
+}
+.recommend-riders {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 4px;
+}
+.recommend-empty {
+  text-align: center;
+  padding: 16px;
+  color: var(--sub);
+  font-size: 13px;
+  background: var(--card);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
 /* ローディング / エラー */
 .loading, .empty-msg, .error-msg {
   text-align: center;
@@ -365,6 +443,9 @@ body {
 
 <!-- 日付選択画面 -->
 <div id="dateScreen" class="date-screen">
+  <!-- おすすめレースセクション（自動ロード） -->
+  <div id="recommendSection" class="recommend-section"></div>
+
   <div class="date-buttons">
     <button class="date-btn primary" id="todayBtn">今日</button>
     <button class="date-btn secondary" id="tomorrowBtn">明日</button>
@@ -788,6 +869,112 @@ body {
 
   // デフォルト日付をセット
   $("#dateInput").value = todayStr();
+
+  /* ── おすすめレース（信頼度>=1.0）を自動ロード ── */
+  (async function loadRecommendations() {
+    const el = $("#recommendSection");
+    const today = todayStr();
+
+    try {
+      // 今日の全予測を取得
+      const { data, error } = await sb
+        .from("prediction_detail")
+        .select("race_id, velodrome, race_number, grade, start_time, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
+        .eq("race_date", today)
+        .order("race_id")
+        .order("predicted_rank");
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        el.innerHTML = "";
+        return;
+      }
+
+      // レースごとにグループ化
+      const raceGroups = {};
+      for (const row of data) {
+        if (!raceGroups[row.race_id]) raceGroups[row.race_id] = [];
+        raceGroups[row.race_id].push(row);
+      }
+
+      // 信頼度を計算してフィルタリング
+      const recommendations = [];
+      for (const [raceId, rows] of Object.entries(raceGroups)) {
+        if (rows.length < 5) continue;
+        // 結果が出ているレースはスキップ
+        if (rows.some(r => r.finish_position != null)) continue;
+
+        const sorted = rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
+        const top3Scores = sorted.slice(0, 3).map(r => r.predicted_score);
+        const restScores = sorted.slice(3).map(r => r.predicted_score);
+
+        const confidence = Math.min(...top3Scores) - Math.max(...restScores);
+
+        if (confidence >= 1.0) {
+          recommendations.push({
+            raceId,
+            velodrome: rows[0].velodrome,
+            raceNumber: rows[0].race_number,
+            grade: rows[0].grade,
+            startTime: rows[0].start_time,
+            confidence,
+            top3: sorted.slice(0, 3),
+            top4: sorted[3],
+          });
+        }
+      }
+
+      if (recommendations.length === 0) {
+        el.innerHTML = "";
+        return;
+      }
+
+      // 発走時刻順 → 信頼度順（時刻がない場合）
+      recommendations.sort((a, b) => {
+        if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
+        if (a.startTime) return -1;
+        if (b.startTime) return 1;
+        return b.confidence - a.confidence;
+      });
+
+      let html = '<div class="recommend-title">今日のおすすめ（信頼度1.0+）</div>';
+
+      for (const rec of recommendations) {
+        const top3Bikes = rec.top3.map(r => r.bike_number).join("-");
+        const top3Names = rec.top3.map(r => (r.rider_name || "").slice(0, 3)).join("・");
+        const plus4 = rec.top4 ? "+" + rec.top4.bike_number + "番" : "";
+        const timeStr = rec.startTime ? rec.startTime : "";
+
+        html += '<div class="recommend-card" data-raceid="' + rec.raceId + '">';
+        html += '<div class="recommend-header">';
+        html += '<div class="recommend-venue-wrap">';
+        html += '<span class="recommend-venue">' + rec.velodrome + " " + rec.raceNumber + "R</span>";
+        html += gradeBadge(rec.grade);
+        html += "</div>";
+        if (timeStr) html += '<span class="recommend-time">' + timeStr + "</span>";
+        html += '<span class="recommend-confidence">信頼度 ' + rec.confidence.toFixed(2) + "</span>";
+        html += "</div>";
+        html += '<div class="recommend-bets">';
+        html += '<div class="recommend-bet"><span class="recommend-bet-label">BOX3:</span> ' + top3Bikes + "</div>";
+        if (plus4) html += '<div class="recommend-bet"><span class="recommend-bet-label">BOX4:</span> ' + plus4 + "</div>";
+        html += "</div>";
+        html += '<div class="recommend-riders">' + top3Names + "</div>";
+        html += "</div>";
+      }
+
+      el.innerHTML = html;
+
+      // カードクリックで詳細へ
+      el.querySelectorAll(".recommend-card").forEach(function(card) {
+        card.addEventListener("click", function() {
+          loadRaceDetail(card.dataset.raceid);
+        });
+      });
+
+    } catch (e) {
+      el.innerHTML = "";
+    }
+  })();
 
   // 最新データ日付を取得して表示
   (async function loadLatestDates() {

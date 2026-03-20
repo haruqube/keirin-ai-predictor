@@ -33,6 +33,7 @@ def init_db():
         weather TEXT,
         track_condition TEXT,
         rider_count INTEGER,
+        start_time TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -161,13 +162,14 @@ def insert_race(conn: sqlite3.Connection, race: dict):
     conn.execute("""
         INSERT OR REPLACE INTO races
         (race_id, date, velodrome, race_number, race_name, grade,
-         round, bank_length, weather, track_condition, rider_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         round, bank_length, weather, track_condition, rider_count, start_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         race["race_id"], race["date"], race["velodrome"], race["race_number"],
         race.get("race_name"), race.get("grade"), race.get("round"),
         race.get("bank_length"), race.get("weather"),
         race.get("track_condition"), race.get("rider_count"),
+        race.get("start_time"),
     ))
 
 

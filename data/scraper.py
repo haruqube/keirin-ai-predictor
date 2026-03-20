@@ -236,6 +236,10 @@ class KeirinScraper:
             info["distance"] = int(d_match2.group(1)) if d_match2 else None
             info["laps"] = None
 
+        # 発走時刻: "発走 20:40" パターン
+        time_match = re.search(r"発走\s*(\d{1,2}:\d{2})", page_text)
+        info["start_time"] = time_match.group(1) if time_match else None
+
         # グレード: GIII, GII, GI, GP, FI, FII をページテキストから検索
         info["grade"] = None
         grade_patterns = [

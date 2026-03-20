@@ -96,6 +96,7 @@ def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str
 
     kaisai_group_idは開催初日+場コードなので、2日目以降は前日以前の
     kaisai_group_idからしか取得できない。最大4日前まで遡って検索する。
+    race_programで見つからない場合はapi_race_listをフォールバックとして使用。
     """
     from datetime import datetime, timedelta
 
@@ -105,6 +106,7 @@ def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str
 
     all_ids = []
     for jyo_cd in jyo_codes:
+        found = False
         for check_date in check_dates:
             kaisai_group_id = f"{check_date}{jyo_cd}"
             cache_key = f"race_program_{kaisai_group_id}"
@@ -114,6 +116,7 @@ def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str
                 matching = [rid for rid in cached if rid.startswith(date)]
                 all_ids.extend(matching)
                 if matching:
+                    found = True
                     break  # この場コードはヒットしたので次の場へ
                 continue
 
@@ -125,7 +128,23 @@ def get_race_ids_for_date(scraper: KeirinScraper, date: str, jyo_codes: list[str
             matching = [rid for rid in race_ids if rid.startswith(date)]
             all_ids.extend(matching)
             if matching:
+                found = True
                 break  # この場コードはヒットしたので次の場へ
+
+        # フォールバック: api_race_listで直接検索
+        if not found:
+            cache_key = f"api_race_list_{date}_{jyo_cd}"
+            cached = scraper._get_json_cache(cache_key)
+            if cached is not None:
+                all_ids.extend(cached)
+            else:
+                url = f"{NETKEIRIN_BASE_URL}/race/api_race_list.html?kaisai_date={date}&jyocd={jyo_cd}"
+                html = scraper._get(url)
+                race_ids = sorted(set(re.findall(r"race_id=(\d{12})", html)))
+                scraper._set_json_cache(cache_key, race_ids)
+                all_ids.extend(race_ids)
+                if race_ids:
+                    logger.info("Found %d races via api_race_list for jyo_cd=%s", len(race_ids), jyo_cd)
 
     return sorted(set(all_ids))
 
@@ -179,6 +198,7 @@ def predict_races(date: str, velodromes: str = "major"):
                 "race_name": entry_data.get("race_name"),
                 "grade": entry_data.get("grade"),
                 "rider_count": len(entries),
+                "start_time": entry_data.get("start_time"),
             }
             insert_race(conn, race_data)
 
