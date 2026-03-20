@@ -143,6 +143,17 @@ def init_db():
         UNIQUE(race_id)
     );
 
+    -- レース配当
+    CREATE TABLE IF NOT EXISTS race_payouts (
+        race_id TEXT PRIMARY KEY,
+        nisyatan_combo TEXT,
+        nisyatan_payout INTEGER,
+        nisyatan_popularity INTEGER,
+        nishafuku_combo TEXT,
+        nishafuku_payout INTEGER,
+        FOREIGN KEY (race_id) REFERENCES races(race_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_results_race ON race_results(race_id);
     CREATE INDEX IF NOT EXISTS idx_results_rider ON race_results(rider_id);
     CREATE INDEX IF NOT EXISTS idx_results_rider_race ON race_results(rider_id, race_id);
@@ -221,6 +232,19 @@ def insert_entry(conn: sqlite3.Connection, entry: dict):
         entry.get("place_rate"), entry.get("avg_competition_score"),
         entry.get("line_group"), entry.get("line_role"),
         entry.get("odds"), entry.get("popularity"),
+    ))
+
+
+def insert_payout(conn: sqlite3.Connection, payout: dict):
+    conn.execute("""
+        INSERT OR REPLACE INTO race_payouts
+        (race_id, nisyatan_combo, nisyatan_payout, nisyatan_popularity,
+         nishafuku_combo, nishafuku_payout)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        payout["race_id"], payout.get("nisyatan_combo"),
+        payout.get("nisyatan_payout"), payout.get("nisyatan_popularity"),
+        payout.get("nishafuku_combo"), payout.get("nishafuku_payout"),
     ))
 
 

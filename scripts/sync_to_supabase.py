@@ -26,6 +26,7 @@ TABLE_ORDER = [
     "races",
     "entries",
     "race_results",
+    "race_payouts",
     "predictions",
     "prediction_results",
     "rider_stats",
@@ -54,6 +55,10 @@ TABLE_COLUMNS = {
         "margin", "last_1lap", "backstretching", "remarks", "odds",
         "popularity", "line_group", "line_role",
     ],
+    "race_payouts": [
+        "race_id", "nisyatan_combo", "nisyatan_payout", "nisyatan_popularity",
+        "nishafuku_combo", "nishafuku_payout",
+    ],
     "predictions": [
         "race_id", "rider_id", "predicted_score", "predicted_rank",
         "mark", "confidence",
@@ -74,6 +79,7 @@ CONFLICT_COLUMNS = {
     "races": "race_id",
     "entries": "race_id,rider_id",
     "race_results": "race_id,rider_id",
+    "race_payouts": "race_id",
     "predictions": "race_id,rider_id",
     "prediction_results": "race_id",
     "rider_stats": "rider_id,period",

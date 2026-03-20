@@ -212,7 +212,7 @@ def run_evening(date_str: str):
     # 1. 結果取得
     logger.info("[Step 1] 結果取得...")
     from data.scraper import KeirinScraper
-    from db.schema import get_connection, insert_result
+    from db.schema import get_connection, insert_result, insert_payout
 
     scraper = KeirinScraper()
     conn = get_connection()
@@ -245,6 +245,11 @@ def run_evening(date_str: str):
                 for rr in result_data.get("results", []):
                     rr["race_id"] = race_id
                     insert_result(conn, rr)
+                # 配当情報を保存
+                payouts = result_data.get("payouts", {})
+                if payouts.get("nisyatan_payout"):
+                    payouts["race_id"] = race_id
+                    insert_payout(conn, payouts)
                 conn.commit()
                 fetched += 1
         except Exception as e:

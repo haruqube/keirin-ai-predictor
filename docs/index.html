@@ -625,7 +625,7 @@ body {
 .tag-chuuana { background: var(--grade-g2); }
 .tag-ouana { background: var(--grade-gp); }
 
-/* 本命スコア（◎-○スコア差 + 推奨賭け金） */
+/* 信頼度（◎-○スコア差 + 推奨賭け金） */
 .honmei-box {
   background: var(--surface);
   border-radius: var(--radius-sm);
@@ -1201,7 +1201,7 @@ body {
         if (rows.length < 2) continue;
         if (rows.some(r => r.finish_position != null)) continue;
         const sorted = rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-        // 本命スコア = ◎-○ スコア差（confidenceフィールド、fallback: 直接計算）
+        // 信頼度 = ◎-○ スコア差（confidenceフィールド、fallback: 直接計算）
         var gap = sorted[0].confidence;
         if (gap == null) gap = (sorted[0].predicted_score || 0) - (sorted[1].predicted_score || 0);
         if (gap >= 0.35) {
@@ -1293,11 +1293,11 @@ body {
     }
 
     if (highRaces.length > 0) {
-      h += '<div class="rec-list-group-label">HIGH（本命スコア \u2265 0.89）— 各500円×4点</div>';
+      h += '<div class="rec-list-group-label">HIGH（信頼度 \u2265 0.89）— 各500円×4点</div>';
       for (var i = 0; i < highRaces.length; i++) h += renderCard(highRaces[i]);
     }
     if (medRaces.length > 0) {
-      h += '<div class="rec-list-group-label">MED（本命スコア \u2265 0.35）— 各100円×4点</div>';
+      h += '<div class="rec-list-group-label">MED（信頼度 \u2265 0.35）— 各100円×4点</div>';
       for (var i = 0; i < medRaces.length; i++) h += renderCard(medRaces[i]);
     }
 
@@ -1307,13 +1307,13 @@ body {
     });
   }
 
-  // 信頼度計算 (1位vs3位スコア差 — 2799レース6ヶ月分析で最適: r=0.365, P85で86.7%的中)
+  // 信頼度計算 (◎-○スコア差)
   function calcRaceConf(predsByRace) {
     const conf = {};
     for (const [rid, rows] of Object.entries(predsByRace)) {
-      if (rows.length < 3) continue;
+      if (rows.length < 2) continue;
       rows.sort((a, b) => a.predicted_rank - b.predicted_rank);
-      conf[rid] = rows[0].predicted_score - rows[2].predicted_score;
+      conf[rid] = rows[0].predicted_score - rows[1].predicted_score;
     }
     return conf;
   }
@@ -1321,10 +1321,10 @@ body {
   function confBadge(conf) {
     if (conf == null) return '';
     var cls;
-    if (conf >= 2.3) cls = 'race-conf-high';
-    else if (conf >= 0.85) cls = 'race-conf-mid';
+    if (conf >= 0.89) cls = 'race-conf-high';
+    else if (conf >= 0.35) cls = 'race-conf-mid';
     else cls = 'race-conf-low';
-    return '<span class="race-conf ' + cls + '">信頼度 ' + conf.toFixed(1) + '</span>';
+    return '<span class="race-conf ' + cls + '">' + (conf >= 0.89 ? 'HIGH' : conf >= 0.35 ? 'MED' : 'LOW') + ' ' + conf.toFixed(2) + '</span>';
   }
 
   // キャッシュ: 日付ごとのレース・予測データ
@@ -1392,8 +1392,8 @@ body {
       for (const [venue, vr] of venueEntries) {
         // 場ごとの信頼度集計
         const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
-        const highCount = confs.filter(c => c >= 2.3).length;
-        const midCount = confs.filter(c => c >= 0.85 && c < 2.3).length;
+        const highCount = confs.filter(c => c >= 0.89).length;
+        const midCount = confs.filter(c => c >= 0.35 && c < 0.89).length;
         const hasRec = highCount > 0;
 
         // 時間帯
@@ -1421,8 +1421,8 @@ body {
         }
         if (confs.length > 0) {
           h += '<div class="venue-conf-summary">';
-          if (highCount > 0) h += '<span class="venue-conf-tag venue-conf-high">高信頼 ' + highCount + 'R</span>';
-          if (midCount > 0) h += '<span class="venue-conf-tag venue-conf-mid">中信頼 ' + midCount + 'R</span>';
+          if (highCount > 0) h += '<span class="venue-conf-tag venue-conf-high">HIGH ' + highCount + 'R</span>';
+          if (midCount > 0) h += '<span class="venue-conf-tag venue-conf-mid">MED ' + midCount + 'R</span>';
           h += '</div>';
         }
         h += '</div>';
@@ -1567,10 +1567,10 @@ body {
 
       if (data.length >= 3) {
         if (hasRes) {
-          // 結果あり: 本命スコアのみ表示（買い目は非表示）
+          // 結果あり: 信頼度のみ表示（買い目は非表示）
           h += buildHonmeiBox(data);
         } else {
-          // 結果なし: 本命スコア + 買い目推奨
+          // 結果なし: 信頼度 + 買い目推奨
           h += buildBetSection(data);
         }
       }
@@ -1580,7 +1580,7 @@ body {
     }
   }
 
-  /* ── 本命スコア（結果あり用） ── */
+  /* ── 信頼度（結果あり用） ── */
   function buildHonmeiBox(data) {
     const sorted = data.slice().sort((a, b) => a.predicted_rank - b.predicted_rank);
     if (sorted.length < 2) return '';
@@ -1599,7 +1599,7 @@ body {
     let h = '<div class="bet-section">';
     h += '<div class="honmei-box">';
     h += '<div class="honmei-row">';
-    h += '<span class="honmei-label">本命スコア</span>';
+    h += '<span class="honmei-label">信頼度</span>';
     h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
     h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
     h += '</div>';
@@ -1634,10 +1634,10 @@ body {
 
     let h = '<div class="bet-section">';
 
-    // 本命スコア表示
+    // 信頼度表示
     h += '<div class="honmei-box">';
     h += '<div class="honmei-row">';
-    h += '<span class="honmei-label">本命スコア</span>';
+    h += '<span class="honmei-label">信頼度</span>';
     h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
     h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
     h += '</div>';
@@ -1718,6 +1718,7 @@ body {
       if (e1 || !recent || recent.length === 0) { el.innerHTML = ""; return; }
       var targetDate = recent[0].race_date;
 
+      // 予測データ取得
       var { data, error } = await sb
         .from("prediction_detail")
         .select("race_id, velodrome, race_number, grade, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
@@ -1727,11 +1728,21 @@ body {
       if (error) throw error;
       if (!data || data.length === 0) { el.innerHTML = ""; return; }
 
+      // 配当データ取得
+      var raceIds = [...new Set(data.map(r => r.race_id))];
+      var payoutMap = {};
+      var { data: payouts } = await sb
+        .from("race_payouts")
+        .select("race_id, nisyatan_payout")
+        .in("race_id", raceIds);
+      if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+
       // レースごとにグループ化
       var groups = {};
       for (var r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
 
       var totalRaces = 0, top1Hits = 0, top3Overlap = 0, top3Total = 0;
+      var totalBet = 0, totalReturn = 0;
       var raceCards = [];
 
       for (var raceId of Object.keys(groups).sort()) {
@@ -1742,6 +1753,7 @@ body {
         totalRaces++;
         var sorted = rows.slice().sort(function(a, b) { return a.predicted_rank - b.predicted_rank; });
         var predTop3 = sorted.slice(0, 3);
+        var predTop5 = sorted.slice(0, 5);
         var actualTop3Set = new Set();
         for (var r of rows) { if (r.finish_position != null && r.finish_position <= 3) actualTop3Set.add(r.bike_number); }
 
@@ -1758,9 +1770,30 @@ body {
         top3Overlap += overlap;
         top3Total += Math.min(3, actualTop3Set.size);
 
-        // 信頼度
-        var conf = sorted.length >= 3 ? sorted[0].predicted_score - sorted[2].predicted_score : 0;
-        var isHighConf = conf >= 2.3;
+        // 信頼度 (◎-○)
+        var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
+        var isHighConf = conf >= 0.89;
+        var isMed = conf >= 0.35 && conf < 0.89;
+
+        // P&L計算
+        var betUnit = isHighConf ? 500 : isMed ? 100 : 0;
+        var raceBet = betUnit * 4;
+        var raceReturn = 0;
+        var nisyatanPayout = payoutMap[raceId] || 0;
+
+        if (betUnit > 0 && isTop1Hit && nisyatanPayout > 0) {
+          // ◎が1着 → ○▲△△(予測2-5位)のいずれかが2着なら的中
+          var actual2nd = rows.find(function(r) { return r.finish_position === 2; });
+          if (actual2nd) {
+            var targets = predTop5.slice(1).map(function(r) { return r.bike_number; });
+            if (targets.indexOf(actual2nd.bike_number) >= 0) {
+              raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+            }
+          }
+        }
+
+        totalBet += raceBet;
+        totalReturn += raceReturn;
 
         raceCards.push({
           raceId: raceId,
@@ -1769,16 +1802,23 @@ body {
           grade: rows[0].grade,
           conf: conf,
           isHighConf: isHighConf,
+          isMed: isMed,
           isTop1Hit: isTop1Hit,
           overlap: overlap,
-          predTop3: predTop3
+          predTop3: predTop3,
+          bet: raceBet,
+          ret: raceReturn,
+          pnl: raceReturn - raceBet,
+          payout: nisyatanPayout
         });
       }
 
       if (totalRaces === 0) { el.innerHTML = ""; return; }
 
       var top1Pct = (top1Hits / totalRaces * 100).toFixed(1);
-      var top3Pct = top3Total > 0 ? (top3Overlap / top3Total * 100).toFixed(1) : "0.0";
+      var totalPnl = totalReturn - totalBet;
+      var pnlColor = totalPnl >= 0 ? "#16a34a" : "#dc2626";
+      var betRaces = raceCards.filter(function(r) { return r.bet > 0; }).length;
 
       var h = '<div class="yday-section">';
       h += '<div class="section-header">';
@@ -1787,30 +1827,33 @@ body {
       h += '<span class="section-badge">' + formatDate(targetDate) + '</span>';
       h += '</div>';
 
-      // サマリー
+      // P&Lサマリー
       h += '<div class="yday-summary">';
+      h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="yday-stat-label">収支</span></div>';
+      h += '<div class="yday-stat"><span class="yday-stat-value">' + totalBet.toLocaleString() + '円</span><span class="yday-stat-label">投資</span><span class="yday-stat-sub">' + betRaces + 'R</span></div>';
       h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
-      h += '<div class="yday-stat"><span class="yday-stat-value">' + top3Pct + '%</span><span class="yday-stat-label">Top3一致</span><span class="yday-stat-sub">' + top3Overlap + '/' + top3Total + '</span></div>';
-      h += '<div class="yday-stat"><span class="yday-stat-value">' + totalRaces + '</span><span class="yday-stat-label">レース</span></div>';
       h += '</div>';
 
-      // 信頼度の高い順にソート → 上位10件表示
+      // 本命スコアの高い順にソート → 賭け対象のみ表示
       raceCards.sort(function(a, b) { return b.conf - a.conf; });
-      var showCards = raceCards.slice(0, 10);
+      var showCards = raceCards.filter(function(r) { return r.bet > 0; }).slice(0, 15);
 
       for (var i = 0; i < showCards.length; i++) {
         var rc = showCards[i];
         var cardCls = "yday-card";
-        if (rc.isHighConf && rc.isTop1Hit) cardCls += " yday-high-hit";
-        else if (rc.isHighConf && !rc.isTop1Hit) cardCls += " yday-high-miss";
+        if (rc.pnl > 0) cardCls += " yday-high-hit";
+        else if (rc.isHighConf) cardCls += " yday-high-miss";
 
         h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '">';
         h += '<div class="yday-card-top">';
         h += '<span class="yday-venue">' + rc.velodrome + ' ' + rc.raceNumber + 'R</span>';
         h += gradeBadge(rc.grade);
         h += confBadge(rc.conf);
-        if (rc.isTop1Hit) h += '<span class="yday-hit">&#9678;&#30340;&#20013;</span>';
-        else h += '<span class="yday-miss">&#9678;&#12495;&#12474;&#12524;</span>';
+        if (rc.pnl > 0) {
+          h += '<span class="yday-hit" style="font-weight:700">+' + rc.pnl.toLocaleString() + '円</span>';
+        } else {
+          h += '<span class="yday-miss">' + rc.pnl.toLocaleString() + '円</span>';
+        }
         h += '</div>';
 
         // 予測Top3 → 実際の着順
@@ -1828,7 +1871,10 @@ body {
         h += '</div>';
 
         h += '<div class="yday-bottom">';
-        h += '<span class="yday-top3-label">Top3: ' + rc.overlap + '/3</span>';
+        if (rc.payout > 0) {
+          h += '<span style="font-size:11px;color:var(--sub)">2連単 ' + rc.payout.toLocaleString() + '円</span>';
+        }
+        h += '<span class="yday-top3-label" style="margin-left:auto">Top3: ' + rc.overlap + '/3</span>';
         for (var d = 0; d < 3; d++) {
           h += '<span class="yday-dot ' + (d < rc.overlap ? 'yday-dot-hit' : 'yday-dot-miss') + '"></span>';
         }

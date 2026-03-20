@@ -248,7 +248,7 @@ def predict_races(date: str, velodromes: str = "major"):
 
             df = df.sort_values("pred_score", ascending=False).reset_index(drop=True)
 
-            # 本命スコア（◎-○スコア差）→ 推奨賭け金判定
+            # 信頼度（◎-○スコア差）→ 推奨賭け金判定
             score_gap = 0.0
             if len(df) >= 2:
                 score_gap = df.iloc[0]["pred_score"] - df.iloc[1]["pred_score"]
@@ -270,7 +270,7 @@ def predict_races(date: str, velodromes: str = "major"):
 
             print(f"\n{'='*50}")
             print(f"  {velodrome} {rnum}R")
-            print(f"  本命スコア: {score_gap:.2f} ({gap_label}) → {bet_rec}")
+            print(f"  信頼度: {score_gap:.2f} ({gap_label}) → {bet_rec}")
             print(f"{'='*50}")
 
             for i, row in df.iterrows():

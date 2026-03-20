@@ -145,6 +145,9 @@ class KeirinScraper:
         race_info["results"] = results
         race_info["rider_count"] = len(results)
 
+        # 配当情報パース
+        race_info["payouts"] = self._parse_payout_table(soup)
+
         self._set_json_cache(cache_key, race_info)
         return race_info
 
@@ -327,6 +330,29 @@ class KeirinScraper:
                 continue
 
         return results
+
+    def _parse_payout_table(self, soup: BeautifulSoup) -> dict:
+        """配当テーブルをパース（2連単・2連複）"""
+        payout = {}
+        pay_el = soup.select_one('.Payout_Detail_Table')
+        if not pay_el:
+            return payout
+        text = pay_el.get_text(' ', strip=True)
+
+        # 2連単
+        m = re.search(r'２車単\s+(\d+[->＞\s]+\d+)\s+([\d,]+)円\s+(\d+)人気', text)
+        if m:
+            payout['nisyatan_combo'] = m.group(1).strip()
+            payout['nisyatan_payout'] = int(m.group(2).replace(',', ''))
+            payout['nisyatan_popularity'] = int(m.group(3))
+
+        # 2連複
+        m2 = re.search(r'２車複\s+(\d+[->＞\s—=]+\d+)\s+([\d,]+)円', text)
+        if m2:
+            payout['nishafuku_combo'] = m2.group(1).strip()
+            payout['nishafuku_payout'] = int(m2.group(2).replace(',', ''))
+
+        return payout
 
     def _parse_entry_table(self, soup: BeautifulSoup, race_id: str) -> list[dict]:
         """出走表テーブルをパース
