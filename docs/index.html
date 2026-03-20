@@ -940,8 +940,30 @@ body {
       const groups = {};
       for (const r of cachedRaces) { const k = r.velodrome || "不明"; if (!groups[k]) groups[k] = []; groups[k].push(r); }
 
+      // 場をソート: LIVE > 発走前あり > 全終了
+      const venueEntries = Object.entries(groups);
+      if (isToday(dateStr)) {
+        venueEntries.sort(function(a, b) {
+          var aRaces = a[1], bRaces = b[1];
+          var aStatuses = aRaces.map(function(r) { return raceStatus(r.start_time, dateStr); });
+          var bStatuses = bRaces.map(function(r) { return raceStatus(r.start_time, dateStr); });
+          var aLive = aStatuses.some(function(s) { return s === "live"; });
+          var bLive = bStatuses.some(function(s) { return s === "live"; });
+          if (aLive !== bLive) return aLive ? -1 : 1;
+          var aAllDone = aStatuses.length > 0 && aStatuses.every(function(s) { return s === "finished"; });
+          var bAllDone = bStatuses.length > 0 && bStatuses.every(function(s) { return s === "finished"; });
+          if (aAllDone !== bAllDone) return aAllDone ? 1 : -1;
+          // 次の発走時刻が早い順
+          var aNext = aRaces.filter(function(r) { return raceStatus(r.start_time, dateStr) === "upcoming"; }).map(function(r) { return r.start_time || "99:99"; });
+          var bNext = bRaces.filter(function(r) { return raceStatus(r.start_time, dateStr) === "upcoming"; }).map(function(r) { return r.start_time || "99:99"; });
+          var aMin = aNext.length > 0 ? aNext[0] : "99:99";
+          var bMin = bNext.length > 0 ? bNext[0] : "99:99";
+          return aMin.localeCompare(bMin);
+        });
+      }
+
       let h = '<div class="venue-screen-date">' + formatDate(dateStr) + ' の開催場</div>';
-      for (const [venue, vr] of Object.entries(groups)) {
+      for (const [venue, vr] of venueEntries) {
         // 場ごとの信頼度集計
         const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
         const highCount = confs.filter(c => c >= 1.0).length;
@@ -1001,6 +1023,17 @@ body {
     try {
       await fetchDateData(dateStr);
       const venueRaces = cachedRaces.filter(r => r.velodrome === venue);
+      // レースをソート: LIVE → 発走前 → 終了
+      if (isToday(dateStr)) {
+        venueRaces.sort(function(a, b) {
+          var sa = raceStatus(a.start_time, dateStr) || "";
+          var sb2 = raceStatus(b.start_time, dateStr) || "";
+          var order = { "live": 0, "upcoming": 1, "finished": 2, "": 3 };
+          var diff = (order[sa] || 3) - (order[sb2] || 3);
+          if (diff !== 0) return diff;
+          return (a.start_time || "").localeCompare(b.start_time || "");
+        });
+      }
       if (venueRaces.length === 0) {
         el.innerHTML = '<div class="empty-msg"><div class="empty-icon">&#128197;</div>この場のレースデータがありません</div>';
         return;
