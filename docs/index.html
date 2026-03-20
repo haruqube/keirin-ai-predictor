@@ -1016,6 +1016,113 @@ body {
 }
 .yday-dot-hit { background: #059669; }
 .yday-dot-miss { background: #e2e8f0; }
+
+/* ── 結果 日付タブ ── */
+.yday-date-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 8px;
+  scrollbar-width: none;
+}
+.yday-date-tabs::-webkit-scrollbar { display: none; }
+.yday-date-tab {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: var(--surface);
+  color: var(--sub);
+  transition: all 0.15s;
+}
+.yday-date-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+.yday-pnl-link {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ── 収支分析ページ ── */
+.pnl-screen { padding: 12px; }
+.pnl-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.pnl-stat-card {
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  padding: 12px 8px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.pnl-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.pnl-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.pnl-chart-wrap {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px 8px 12px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+.pnl-daily-table { margin-top: 4px; }
+.pnl-daily-header {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+.pnl-daily-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  margin-bottom: 3px;
+  box-shadow: var(--shadow-sm);
+}
+.pnl-daily-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 70px;
+}
+.pnl-daily-val {
+  font-size: 14px;
+  font-weight: 800;
+  min-width: 90px;
+  text-align: right;
+}
+.pnl-daily-sub {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 /* ── トップへ戻るボタン ── */
 .scroll-top {
   position: fixed;
@@ -1079,8 +1186,12 @@ body {
 <!-- レース詳細 -->
 <div id="detailScreen" class="detail-screen hidden"></div>
 
+<!-- 収支分析ページ -->
+<div id="pnlScreen" class="pnl-screen screen hidden"></div>
+
 <button class="scroll-top" id="scrollTopBtn" aria-label="トップへ戻る">&#8593;</button>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 (function() {
@@ -1100,8 +1211,10 @@ body {
     $("#venueScreen").classList.toggle("hidden", name !== "venue");
     $("#racelistScreen").classList.toggle("hidden", name !== "racelist");
     $("#detailScreen").classList.toggle("hidden", name !== "detail");
+    $("#pnlScreen").classList.toggle("hidden", name !== "pnl");
     $("#backBtn").classList.toggle("hidden", name === "date");
     if (name === "date") $("#headerTitle").innerHTML = '競輪AI予想<span class="header-sub">by AI</span>';
+    if (name === "pnl") $("#headerTitle").textContent = '収支分析';
     window.scrollTo(0, 0);
   }
 
@@ -1702,194 +1815,449 @@ body {
     return h;
   }
 
-  /* ── 前日の結果 ── */
-  async function loadYesterdayResults() {
+  /* ── 直近の結果（過去1週間） ── */
+  var _weeklyData = null;
+
+  async function loadWeeklyResults() {
     var el = $("#yesterdaySection");
     try {
-      // 今日より前の最新の結果日を取得
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">読込中...</div>';
       var today = todayStr();
-      var { data: recent, error: e1 } = await sb
+      var d14 = new Date(); d14.setDate(d14.getDate() - 14);
+      var sinceDate = d14.getFullYear() + "-" + String(d14.getMonth()+1).padStart(2,"0") + "-" + String(d14.getDate()).padStart(2,"0");
+
+      // 直近7日分の結果日を取得
+      var { data: dateDist, error: e1 } = await sb
         .from("prediction_detail")
         .select("race_date")
         .not("finish_position", "is", null)
         .lt("race_date", today)
+        .gte("race_date", sinceDate)
         .order("race_date", { ascending: false })
-        .limit(1);
-      if (e1 || !recent || recent.length === 0) { el.innerHTML = ""; return; }
-      var targetDate = recent[0].race_date;
+        .limit(500);
+      if (e1 || !dateDist || dateDist.length === 0) { el.innerHTML = ""; return; }
+      var dates = []; var seen = {};
+      for (var dd of dateDist) { if (!seen[dd.race_date]) { seen[dd.race_date] = 1; dates.push(dd.race_date); } }
+      dates = dates.slice(0, 7);
 
-      // 予測データ取得
-      var { data, error } = await sb
-        .from("prediction_detail")
-        .select("race_id, velodrome, race_number, grade, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
-        .eq("race_date", targetDate)
-        .order("race_id")
-        .order("predicted_rank");
-      if (error) throw error;
-      if (!data || data.length === 0) { el.innerHTML = ""; return; }
+      // 全日付のデータを一括取得（ページネーション）
+      var allData = [];
+      var from = 0;
+      while (true) {
+        var { data: batch, error: e2 } = await sb
+          .from("prediction_detail")
+          .select("race_id, race_date, velodrome, race_number, grade, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
+          .in("race_date", dates)
+          .order("race_date", { ascending: false })
+          .order("race_id")
+          .order("predicted_rank")
+          .range(from, from + 999);
+        if (e2) throw e2;
+        if (!batch || batch.length === 0) break;
+        allData = allData.concat(batch);
+        if (batch.length < 1000) break;
+        from += 1000;
+      }
+      if (allData.length === 0) { el.innerHTML = ""; return; }
 
       // 配当データ取得
-      var raceIds = [...new Set(data.map(r => r.race_id))];
+      var raceIds = []; var seenR = {};
+      for (var r of allData) { if (!seenR[r.race_id]) { seenR[r.race_id] = 1; raceIds.push(r.race_id); } }
       var payoutMap = {};
-      var { data: payouts } = await sb
-        .from("race_payouts")
-        .select("race_id, nisyatan_payout")
-        .in("race_id", raceIds);
-      if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+      for (var i = 0; i < raceIds.length; i += 80) {
+        var chunk = raceIds.slice(i, i + 80);
+        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_payout").in("race_id", chunk);
+        if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+      }
 
-      // レースごとにグループ化
-      var groups = {};
-      for (var r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
+      // 日付別にグループ化
+      var byDate = {};
+      for (var r of allData) {
+        if (!byDate[r.race_date]) byDate[r.race_date] = [];
+        byDate[r.race_date].push(r);
+      }
 
-      var totalRaces = 0, top1Hits = 0, top3Overlap = 0, top3Total = 0;
-      var totalBet = 0, totalReturn = 0;
-      var raceCards = [];
+      _weeklyData = { dates: dates, byDate: byDate, payoutMap: payoutMap };
+      renderWeeklyResults(dates[0]);
+    } catch (e) { console.error(e); el.innerHTML = ""; }
+  }
 
-      for (var raceId of Object.keys(groups).sort()) {
-        var rows = groups[raceId];
+  function renderWeeklyResults(selectedDate) {
+    if (!_weeklyData) return;
+    var el = $("#yesterdaySection");
+    var dates = _weeklyData.dates;
+    var data = _weeklyData.byDate[selectedDate] || [];
+    var payoutMap = _weeklyData.payoutMap;
+
+    var groups = {};
+    for (var r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
+
+    var totalRaces = 0, top1Hits = 0, top3Overlap = 0, top3Total = 0;
+    var totalBet = 0, totalReturn = 0;
+    var raceCards = [];
+
+    for (var raceId of Object.keys(groups).sort()) {
+      var rows = groups[raceId];
+      var hasResults = rows.some(function(r) { return r.finish_position != null; });
+      if (!hasResults) continue;
+      totalRaces++;
+      var sorted = rows.slice().sort(function(a, b) { return a.predicted_rank - b.predicted_rank; });
+      var predTop3 = sorted.slice(0, 3);
+      var predTop5 = sorted.slice(0, 5);
+      var actualTop3Set = new Set();
+      for (var r of rows) { if (r.finish_position != null && r.finish_position <= 3) actualTop3Set.add(r.bike_number); }
+
+      var top1Row = predTop3[0];
+      var isTop1Hit = top1Row && top1Row.finish_position === 1;
+      if (isTop1Hit) top1Hits++;
+
+      var overlap = 0;
+      for (var p of predTop3) { if (p.finish_position != null && p.finish_position <= 3) overlap++; }
+      top3Overlap += overlap;
+      top3Total += Math.min(3, actualTop3Set.size);
+
+      var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
+      var isHighConf = conf >= 0.89;
+      var isMed = conf >= 0.35 && conf < 0.89;
+
+      var betUnit = isHighConf ? 500 : isMed ? 100 : 0;
+      var raceBet = betUnit * 4;
+      var raceReturn = 0;
+      var nisyatanPayout = payoutMap[raceId] || 0;
+
+      if (betUnit > 0 && isTop1Hit && nisyatanPayout > 0) {
+        var actual2nd = rows.find(function(r) { return r.finish_position === 2; });
+        if (actual2nd) {
+          var targets = predTop5.slice(1).map(function(r) { return r.bike_number; });
+          if (targets.indexOf(actual2nd.bike_number) >= 0) {
+            raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+          }
+        }
+      }
+
+      totalBet += raceBet;
+      totalReturn += raceReturn;
+      raceCards.push({
+        raceId: raceId, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
+        grade: rows[0].grade, conf: conf, isHighConf: isHighConf, isMed: isMed,
+        isTop1Hit: isTop1Hit, overlap: overlap, predTop3: predTop3,
+        bet: raceBet, ret: raceReturn, pnl: raceReturn - raceBet, payout: nisyatanPayout
+      });
+    }
+
+    var top1Pct = totalRaces > 0 ? (top1Hits / totalRaces * 100).toFixed(1) : "0.0";
+    var totalPnl = totalReturn - totalBet;
+    var pnlColor = totalPnl >= 0 ? "#16a34a" : "#dc2626";
+    var betRaces = raceCards.filter(function(r) { return r.bet > 0; }).length;
+
+    var h = '<div class="yday-section">';
+    h += '<div class="section-header">';
+    h += '<div class="section-icon">&#128202;</div>';
+    h += '<span class="section-title">直近の結果</span>';
+    h += '<span class="yday-pnl-link" id="pnlLinkBtn">収支分析 &#8250;</span>';
+    h += '</div>';
+
+    // 日付タブ
+    h += '<div class="yday-date-tabs">';
+    for (var i = 0; i < dates.length; i++) {
+      var isActive = dates[i] === selectedDate;
+      h += '<button class="yday-date-tab' + (isActive ? ' active' : '') + '" data-date="' + dates[i] + '">' + formatDate(dates[i]) + '</button>';
+    }
+    h += '</div>';
+
+    if (totalRaces === 0) {
+      h += '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">この日の結果データなし</div></div>';
+      el.innerHTML = h;
+      attachWeeklyListeners(el);
+      return;
+    }
+
+    // P&Lサマリー
+    h += '<div class="yday-summary">';
+    h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="yday-stat-label">収支</span></div>';
+    h += '<div class="yday-stat"><span class="yday-stat-value">' + totalBet.toLocaleString() + '円</span><span class="yday-stat-label">投資</span><span class="yday-stat-sub">' + betRaces + 'R</span></div>';
+    h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
+    h += '</div>';
+
+    raceCards.sort(function(a, b) { return b.conf - a.conf; });
+    var showCards = raceCards.filter(function(r) { return r.bet > 0; }).slice(0, 15);
+
+    for (var i = 0; i < showCards.length; i++) {
+      var rc = showCards[i];
+      var cardCls = "yday-card";
+      if (rc.pnl > 0) cardCls += " yday-high-hit";
+      else if (rc.isHighConf) cardCls += " yday-high-miss";
+
+      h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '">';
+      h += '<div class="yday-card-top">';
+      h += '<span class="yday-venue">' + rc.velodrome + ' ' + rc.raceNumber + 'R</span>';
+      h += gradeBadge(rc.grade);
+      h += confBadge(rc.conf);
+      if (rc.pnl > 0) {
+        h += '<span class="yday-hit" style="font-weight:700">+' + rc.pnl.toLocaleString() + '円</span>';
+      } else {
+        h += '<span class="yday-miss">' + rc.pnl.toLocaleString() + '円</span>';
+      }
+      h += '</div>';
+
+      h += '<div class="yday-comparison">';
+      for (var p of rc.predTop3) {
+        var mc = markClass(p.mark);
+        var inT3 = p.finish_position != null && p.finish_position <= 3;
+        h += '<span class="yday-rider ' + (inT3 ? 'yday-in-top3' : 'yday-out-top3') + '">';
+        h += '<span class="mark ' + mc + '" style="font-size:13px">' + (p.mark || "") + '</span>';
+        h += bikeCircle(p.bike_number);
+        h += '<span class="yday-arrow">&#8594;</span>';
+        h += '<span class="yday-finish">' + (p.finish_position != null ? p.finish_position + '&#30528;' : '-') + '</span>';
+        h += '</span>';
+      }
+      h += '</div>';
+
+      h += '<div class="yday-bottom">';
+      if (rc.payout > 0) {
+        h += '<span style="font-size:11px;color:var(--sub)">2連単 ' + rc.payout.toLocaleString() + '円</span>';
+      }
+      h += '<span class="yday-top3-label" style="margin-left:auto">Top3: ' + rc.overlap + '/3</span>';
+      for (var d = 0; d < 3; d++) {
+        h += '<span class="yday-dot ' + (d < rc.overlap ? 'yday-dot-hit' : 'yday-dot-miss') + '"></span>';
+      }
+      h += '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+
+    el.innerHTML = h;
+    attachWeeklyListeners(el);
+  }
+
+  function attachWeeklyListeners(el) {
+    el.querySelectorAll(".yday-date-tab").forEach(function(tab) {
+      tab.addEventListener("click", function() { renderWeeklyResults(tab.dataset.date); });
+    });
+    el.querySelectorAll(".yday-card").forEach(function(c) {
+      c.addEventListener("click", function() { S.from = null; loadRaceDetail(c.dataset.raceid); });
+    });
+    var pnlBtn = el.querySelector("#pnlLinkBtn");
+    if (pnlBtn) pnlBtn.addEventListener("click", function() { loadPnlAnalysis(); });
+  }
+
+  /* ── 収支分析ページ ── */
+  var _pnlChart = null;
+
+  async function loadPnlAnalysis() {
+    showScreen("pnl");
+    var el = $("#pnlScreen");
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px">収支データ読込中...</div>';
+
+    try {
+      // 2026-01-01以降の予測Top5を全取得（ページネーション）
+      var allData = [];
+      var from = 0;
+      while (true) {
+        var { data: batch, error } = await sb
+          .from("prediction_detail")
+          .select("race_id, race_date, bike_number, predicted_score, predicted_rank, finish_position")
+          .gte("race_date", "2026-01-01")
+          .lte("predicted_rank", 5)
+          .order("race_date")
+          .order("race_id")
+          .order("predicted_rank")
+          .range(from, from + 999);
+        if (error) throw error;
+        if (!batch || batch.length === 0) break;
+        allData = allData.concat(batch);
+        if (batch.length < 1000) break;
+        from += 1000;
+      }
+
+      if (allData.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">データなし</div>';
+        return;
+      }
+
+      // 配当データ取得
+      var raceIds = []; var seenR = {};
+      for (var r of allData) { if (!seenR[r.race_id]) { seenR[r.race_id] = 1; raceIds.push(r.race_id); } }
+      var payoutMap = {};
+      for (var i = 0; i < raceIds.length; i += 80) {
+        var chunk = raceIds.slice(i, i + 80);
+        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_payout").in("race_id", chunk);
+        if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+      }
+
+      // レース別にグループ化
+      var byRace = {};
+      for (var r of allData) {
+        if (!byRace[r.race_id]) byRace[r.race_id] = { date: r.race_date, rows: [] };
+        byRace[r.race_id].rows.push(r);
+      }
+
+      // 日別P&L計算
+      var dailyPnl = {};
+      var totalBet = 0, totalReturn = 0, totalRaces = 0, top1Hits = 0, betRaces = 0;
+      var nisyatanHits = 0;
+
+      for (var raceId of Object.keys(byRace)) {
+        var race = byRace[raceId];
+        var rows = race.rows;
+        var date = race.date;
         var hasResults = rows.some(function(r) { return r.finish_position != null; });
         if (!hasResults) continue;
 
         totalRaces++;
         var sorted = rows.slice().sort(function(a, b) { return a.predicted_rank - b.predicted_rank; });
-        var predTop3 = sorted.slice(0, 3);
-        var predTop5 = sorted.slice(0, 5);
-        var actualTop3Set = new Set();
-        for (var r of rows) { if (r.finish_position != null && r.finish_position <= 3) actualTop3Set.add(r.bike_number); }
-
-        // ◎的中判定
-        var top1Row = predTop3[0];
-        var isTop1Hit = top1Row && top1Row.finish_position === 1;
-        if (isTop1Hit) top1Hits++;
-
-        // Top3一致数
-        var overlap = 0;
-        for (var p of predTop3) {
-          if (p.finish_position != null && p.finish_position <= 3) overlap++;
-        }
-        top3Overlap += overlap;
-        top3Total += Math.min(3, actualTop3Set.size);
-
-        // 信頼度 (◎-○)
         var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
-        var isHighConf = conf >= 0.89;
-        var isMed = conf >= 0.35 && conf < 0.89;
-
-        // P&L計算
-        var betUnit = isHighConf ? 500 : isMed ? 100 : 0;
+        var betUnit = conf >= 0.89 ? 500 : conf >= 0.35 ? 100 : 0;
         var raceBet = betUnit * 4;
         var raceReturn = 0;
-        var nisyatanPayout = payoutMap[raceId] || 0;
 
-        if (betUnit > 0 && isTop1Hit && nisyatanPayout > 0) {
-          // ◎が1着 → ○▲△△(予測2-5位)のいずれかが2着なら的中
-          var actual2nd = rows.find(function(r) { return r.finish_position === 2; });
-          if (actual2nd) {
-            var targets = predTop5.slice(1).map(function(r) { return r.bike_number; });
-            if (targets.indexOf(actual2nd.bike_number) >= 0) {
-              raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+        var isTop1Hit = sorted[0] && sorted[0].finish_position === 1;
+        if (isTop1Hit) top1Hits++;
+
+        if (betUnit > 0) {
+          betRaces++;
+          var nisyatanPayout = payoutMap[raceId] || 0;
+          if (isTop1Hit && nisyatanPayout > 0) {
+            var actual2nd = sorted.find(function(r) { return r.finish_position === 2; });
+            if (actual2nd) {
+              var targets = sorted.slice(1).map(function(r) { return r.bike_number; });
+              if (targets.indexOf(actual2nd.bike_number) >= 0) {
+                raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+                nisyatanHits++;
+              }
             }
           }
         }
 
         totalBet += raceBet;
         totalReturn += raceReturn;
-
-        raceCards.push({
-          raceId: raceId,
-          velodrome: rows[0].velodrome,
-          raceNumber: rows[0].race_number,
-          grade: rows[0].grade,
-          conf: conf,
-          isHighConf: isHighConf,
-          isMed: isMed,
-          isTop1Hit: isTop1Hit,
-          overlap: overlap,
-          predTop3: predTop3,
-          bet: raceBet,
-          ret: raceReturn,
-          pnl: raceReturn - raceBet,
-          payout: nisyatanPayout
-        });
+        if (!dailyPnl[date]) dailyPnl[date] = { bet: 0, ret: 0, races: 0, hits: 0 };
+        dailyPnl[date].bet += raceBet;
+        dailyPnl[date].ret += raceReturn;
+        dailyPnl[date].races++;
+        if (isTop1Hit) dailyPnl[date].hits++;
       }
 
-      if (totalRaces === 0) { el.innerHTML = ""; return; }
+      // チャートデータ作成
+      var sortedDates = Object.keys(dailyPnl).sort();
+      var labels = [];
+      var cumData = [];
+      var dailyDataArr = [];
+      var cum = 0;
 
-      var top1Pct = (top1Hits / totalRaces * 100).toFixed(1);
+      for (var sd of sortedDates) {
+        var dp = dailyPnl[sd];
+        var dayPnl = dp.ret - dp.bet;
+        cum += dayPnl;
+        var dd = new Date(sd + "T00:00:00");
+        labels.push((dd.getMonth()+1) + "/" + dd.getDate());
+        cumData.push(cum);
+        dailyDataArr.push(dayPnl);
+      }
+
       var totalPnl = totalReturn - totalBet;
+      var roi = totalBet > 0 ? ((totalReturn / totalBet) * 100).toFixed(1) : "0.0";
+      var top1Pct = totalRaces > 0 ? (top1Hits / totalRaces * 100).toFixed(1) : "0.0";
+      var hitRate = betRaces > 0 ? (nisyatanHits / betRaces * 100).toFixed(1) : "0.0";
       var pnlColor = totalPnl >= 0 ? "#16a34a" : "#dc2626";
-      var betRaces = raceCards.filter(function(r) { return r.bet > 0; }).length;
 
-      var h = '<div class="yday-section">';
-      h += '<div class="section-header">';
-      h += '<div class="section-icon">&#128202;</div>';
-      h += '<span class="section-title">前日の結果</span>';
-      h += '<span class="section-badge">' + formatDate(targetDate) + '</span>';
+      // HTML構築
+      var h = '<div class="section-header" style="margin-bottom:12px">';
+      h += '<div class="section-icon">&#128200;</div>';
+      h += '<span class="section-title">収支分析</span>';
+      h += '<span class="section-badge">2026/1/1〜</span>';
       h += '</div>';
 
-      // P&Lサマリー
-      h += '<div class="yday-summary">';
-      h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="yday-stat-label">収支</span></div>';
-      h += '<div class="yday-stat"><span class="yday-stat-value">' + totalBet.toLocaleString() + '円</span><span class="yday-stat-label">投資</span><span class="yday-stat-sub">' + betRaces + 'R</span></div>';
-      h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
+      h += '<div class="pnl-stats">';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="pnl-stat-label">累積損益</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + totalBet.toLocaleString() + '円</span><span class="pnl-stat-label">総投資額</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + roi + '%</span><span class="pnl-stat-label">回収率</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + hitRate + '%</span><span class="pnl-stat-label">2連単的中率 (' + nisyatanHits + '/' + betRaces + ')</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + sortedDates.length + '日</span><span class="pnl-stat-label">開催日数</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + top1Pct + '%</span><span class="pnl-stat-label">◎的中率 (' + top1Hits + '/' + totalRaces + ')</span></div>';
       h += '</div>';
 
-      // 本命スコアの高い順にソート → 賭け対象のみ表示
-      raceCards.sort(function(a, b) { return b.conf - a.conf; });
-      var showCards = raceCards.filter(function(r) { return r.bet > 0; }).slice(0, 15);
+      h += '<div class="pnl-chart-wrap"><canvas id="pnlChart"></canvas></div>';
 
-      for (var i = 0; i < showCards.length; i++) {
-        var rc = showCards[i];
-        var cardCls = "yday-card";
-        if (rc.pnl > 0) cardCls += " yday-high-hit";
-        else if (rc.isHighConf) cardCls += " yday-high-miss";
-
-        h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '">';
-        h += '<div class="yday-card-top">';
-        h += '<span class="yday-venue">' + rc.velodrome + ' ' + rc.raceNumber + 'R</span>';
-        h += gradeBadge(rc.grade);
-        h += confBadge(rc.conf);
-        if (rc.pnl > 0) {
-          h += '<span class="yday-hit" style="font-weight:700">+' + rc.pnl.toLocaleString() + '円</span>';
-        } else {
-          h += '<span class="yday-miss">' + rc.pnl.toLocaleString() + '円</span>';
-        }
-        h += '</div>';
-
-        // 予測Top3 → 実際の着順
-        h += '<div class="yday-comparison">';
-        for (var p of rc.predTop3) {
-          var mc = markClass(p.mark);
-          var inT3 = p.finish_position != null && p.finish_position <= 3;
-          h += '<span class="yday-rider ' + (inT3 ? 'yday-in-top3' : 'yday-out-top3') + '">';
-          h += '<span class="mark ' + mc + '" style="font-size:13px">' + (p.mark || "") + '</span>';
-          h += bikeCircle(p.bike_number);
-          h += '<span class="yday-arrow">&#8594;</span>';
-          h += '<span class="yday-finish">' + (p.finish_position != null ? p.finish_position + '&#30528;' : '-') + '</span>';
-          h += '</span>';
-        }
-        h += '</div>';
-
-        h += '<div class="yday-bottom">';
-        if (rc.payout > 0) {
-          h += '<span style="font-size:11px;color:var(--sub)">2連単 ' + rc.payout.toLocaleString() + '円</span>';
-        }
-        h += '<span class="yday-top3-label" style="margin-left:auto">Top3: ' + rc.overlap + '/3</span>';
-        for (var d = 0; d < 3; d++) {
-          h += '<span class="yday-dot ' + (d < rc.overlap ? 'yday-dot-hit' : 'yday-dot-miss') + '"></span>';
-        }
-        h += '</div>';
+      // 日別テーブル
+      h += '<div class="pnl-daily-table">';
+      h += '<div class="pnl-daily-header">日別収支</div>';
+      for (var i = sortedDates.length - 1; i >= 0; i--) {
+        var d = sortedDates[i];
+        var dp = dailyPnl[d];
+        var dayPnl = dp.ret - dp.bet;
+        var dayColor = dayPnl >= 0 ? "#16a34a" : "#dc2626";
+        var hitPct = dp.races > 0 ? (dp.hits / dp.races * 100).toFixed(0) : "0";
+        h += '<div class="pnl-daily-row">';
+        h += '<span class="pnl-daily-date">' + formatDate(d) + '</span>';
+        h += '<span class="pnl-daily-val" style="color:' + dayColor + '">' + (dayPnl >= 0 ? '+' : '') + dayPnl.toLocaleString() + '円</span>';
+        h += '<span class="pnl-daily-sub">投資' + dp.bet.toLocaleString() + '円 / ◎' + hitPct + '%</span>';
         h += '</div>';
       }
       h += '</div>';
 
       el.innerHTML = h;
 
-      // カードクリック → レース詳細
-      el.querySelectorAll(".yday-card").forEach(function(c) {
-        c.addEventListener("click", function() { S.from = null; loadRaceDetail(c.dataset.raceid); });
+      // Chart.js描画
+      if (_pnlChart) { _pnlChart.destroy(); _pnlChart = null; }
+      var ctx = document.getElementById("pnlChart").getContext("2d");
+      _pnlChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "累積損益",
+            data: cumData,
+            borderColor: "#2563eb",
+            backgroundColor: "rgba(37,99,235,0.08)",
+            borderWidth: 2,
+            pointRadius: 2.5,
+            pointBackgroundColor: "#2563eb",
+            fill: true,
+            tension: 0.2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          interaction: { intersect: false, mode: "index" },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: function(items) { return items[0].label; },
+                label: function(ctx) {
+                  return "累積: " + (ctx.raw >= 0 ? "+" : "") + ctx.raw.toLocaleString() + "円";
+                },
+                afterLabel: function(ctx) {
+                  var idx = ctx.dataIndex;
+                  return "日次: " + (dailyDataArr[idx] >= 0 ? "+" : "") + dailyDataArr[idx].toLocaleString() + "円";
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { font: { size: 9 }, maxRotation: 60, autoSkip: true, maxTicksLimit: 15 }
+            },
+            y: {
+              ticks: {
+                callback: function(v) {
+                  if (Math.abs(v) >= 1000) return (v >= 0 ? "+" : "") + (v / 1000).toFixed(0) + "k";
+                  return (v >= 0 ? "+" : "") + v;
+                },
+                font: { size: 10 }
+              },
+              grid: { color: "rgba(0,0,0,0.05)" }
+            }
+          }
+        }
       });
-    } catch (e) { el.innerHTML = ""; }
+
+    } catch (e) {
+      console.error(e);
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626;font-size:13px">データ取得エラー</div>';
+    }
   }
 
   /* ── イベント ── */
@@ -1903,6 +2271,7 @@ body {
       else if (S.venue) loadRaceList(S.date, S.venue);
       else showScreen("date");
     }
+    else if (S.screen === "pnl") showScreen("date");
     else if (S.screen === "recommend") showScreen("date");
     else if (S.screen === "racelist") loadVenueList(S.date);
     else if (S.screen === "venue") showScreen("date");
@@ -1919,7 +2288,7 @@ body {
 
   $("#dateInput").value = todayStr();
   loadRecommendations();
-  loadYesterdayResults();
+  loadWeeklyResults();
 
   (async function loadLatestDates() {
     const el = $("#latestInfo");
