@@ -789,6 +789,32 @@ body {
 }
 .yday-dot-hit { background: #059669; }
 .yday-dot-miss { background: #e2e8f0; }
+/* ── トップへ戻るボタン ── */
+.scroll-top {
+  position: fixed;
+  bottom: 24px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 44px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  z-index: 99;
+}
+.scroll-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.scroll-top:active { transform: scale(0.9); }
 </style>
 </head>
 <body>
@@ -822,6 +848,8 @@ body {
 
 <!-- レース詳細 -->
 <div id="detailScreen" class="detail-screen hidden"></div>
+
+<button class="scroll-top" id="scrollTopBtn" aria-label="トップへ戻る">&#8593;</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -1484,6 +1512,15 @@ body {
     if (S.screen === "detail") loadRaceList(S.date, S.venue);
     else if (S.screen === "racelist") loadVenueList(S.date);
     else if (S.screen === "venue") showScreen("date");
+  });
+
+  // トップへ戻るボタン
+  var scrollBtn = $("#scrollTopBtn");
+  window.addEventListener("scroll", function() {
+    scrollBtn.classList.toggle("visible", window.scrollY > 200);
+  });
+  scrollBtn.addEventListener("click", function() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
   $("#dateInput").value = todayStr();
