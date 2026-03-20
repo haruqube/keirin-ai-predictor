@@ -11,7 +11,8 @@ import logging
 import pandas as pd
 import numpy as np
 from db.schema import get_connection
-from config import CLASS_MAP, GRADE_MAP, BANK_LENGTH, DEFAULT_BANK_LENGTH
+from config import (CLASS_MAP, GRADE_MAP, BANK_LENGTH, DEFAULT_BANK_LENGTH,
+                     WEATHER_MAP, TRACK_CONDITION_MAP)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class FeatureBuilder:
     @property
     def feature_names(self) -> list[str]:
         return [
-            # 選手成績 (14)
+            # 選手成績 (11)
             "rider_class_num",
             "rider_win_rate_all",
             "rider_place_rate_all",
@@ -51,6 +52,9 @@ class FeatureBuilder:
             "rider_avg_last_1lap",
             "rider_avg_last_1lap_recent5",
             "rider_best_last_1lap",
+            # 上がりタイム正規化 (2) — Phase 2c
+            "rider_normalized_last_1lap",
+            "rider_normalized_last_1lap_recent5",
             # バンク相性 (2)
             "rider_velodrome_race_count",
             "rider_venue_top3_rate",
@@ -59,12 +63,26 @@ class FeatureBuilder:
             "rider_form_acuity",
             "rider_days_since_last_race",
             "rider_finish_pos_std",
+            # 選手年齢 (1) — Phase 2b
+            "rider_age",
             # レース条件 (5)
             "race_grade_num",
             "race_bank_length",
             "race_number",
             "entry_frame_number",
             "entry_bike_number",
+            # Phase 1: 隠れた特徴量 (5)
+            "entry_competition_score",
+            "entry_win_rate",
+            "entry_place_rate",
+            "entry_gear_ratio",
+            "race_rider_count",
+            # Phase 2a: 天候・バンク状態 (2)
+            "race_weather",
+            "race_track_condition",
+            # Phase 2d: オッズ・人気 (2)
+            "entry_odds",
+            "entry_popularity",
             # ライン (6)
             "line_size",
             "line_avg_class",
@@ -87,9 +105,10 @@ class FeatureBuilder:
         date_start = f"{year_start}-01-01"
         date_end = f"{year_end}-12-31"
 
-        # 対象レース一覧
+        # 対象レース一覧（天候・バンク状態も取得）
         races_df = pd.read_sql("""
-            SELECT race_id, date, velodrome, race_number, grade, rider_count
+            SELECT race_id, date, velodrome, race_number, grade, rider_count,
+                   weather, track_condition
             FROM races
             WHERE date >= ? AND date <= ?
             ORDER BY date
@@ -114,9 +133,19 @@ class FeatureBuilder:
         """, conn)
         logger.info("Total results loaded: %d", len(all_results))
 
-        # 選手マスタ
-        riders_df = pd.read_sql("SELECT rider_id, class FROM riders", conn)
+        # 出走表データ（entry_competition_score, entry_win_rate, entry_place_rate用）
+        entries_df = pd.read_sql("""
+            SELECT race_id, rider_id, avg_competition_score, win_rate, place_rate,
+                   odds AS entry_odds_val, popularity AS entry_popularity_val
+            FROM entries
+            WHERE race_id IN (SELECT race_id FROM races WHERE date >= ? AND date <= ?)
+        """, conn, params=(date_start, date_end))
+        logger.info("Entries loaded: %d", len(entries_df))
+
+        # 選手マスタ（birth_yearも取得 — Phase 2b 年齢計算用）
+        riders_df = pd.read_sql("SELECT rider_id, class, birth_year FROM riders", conn)
         rider_class_map = dict(zip(riders_df["rider_id"], riders_df["class"]))
+        rider_birth_year_map = dict(zip(riders_df["rider_id"], riders_df["birth_year"]))
         conn.close()
 
         # 対象期間の結果（特徴量付与対象）
@@ -144,6 +173,48 @@ class FeatureBuilder:
         target_results["entry_bike_number"] = target_results["bike_number"].fillna(1)
         target_results["entry_gear_ratio"] = pd.to_numeric(target_results["gear_ratio"], errors="coerce").fillna(3.93)
 
+        # --- Phase 2a: 天候・バンク状態 ---
+        target_results["race_weather"] = target_results["race_id"].map(
+            lambda rid: WEATHER_MAP.get(
+                race_map.loc[rid, "weather"] if rid in race_map.index else None, 0
+            )
+        )
+        target_results["race_track_condition"] = target_results["race_id"].map(
+            lambda rid: TRACK_CONDITION_MAP.get(
+                race_map.loc[rid, "track_condition"] if rid in race_map.index else None, 0
+            )
+        )
+
+        # --- Phase 2d: オッズ・人気（race_resultsの値を使用） ---
+        target_results["entry_odds"] = pd.to_numeric(
+            target_results["odds"], errors="coerce"
+        ).fillna(0.0)
+        target_results["entry_popularity"] = pd.to_numeric(
+            target_results["popularity"], errors="coerce"
+        ).fillna(5).astype(int)
+
+        # --- Phase 1: 出走表の公式競走得点・勝率・連対率 ---
+        if not entries_df.empty:
+            entries_merge = entries_df[["race_id", "rider_id",
+                                        "avg_competition_score", "win_rate", "place_rate"]].copy()
+            entries_merge = entries_merge.rename(columns={
+                "avg_competition_score": "entry_competition_score",
+                "win_rate": "entry_win_rate",
+                "place_rate": "entry_place_rate",
+            })
+            target_results = target_results.merge(
+                entries_merge, on=["race_id", "rider_id"], how="left"
+            )
+        target_results["entry_competition_score"] = target_results.get(
+            "entry_competition_score", pd.Series(0.0, index=target_results.index)
+        ).fillna(0.0)
+        target_results["entry_win_rate"] = target_results.get(
+            "entry_win_rate", pd.Series(0.0, index=target_results.index)
+        ).fillna(0.0)
+        target_results["entry_place_rate"] = target_results.get(
+            "entry_place_rate", pd.Series(0.0, index=target_results.index)
+        ).fillna(0.0)
+
         logger.info("Race features done")
 
         # --- 選手成績特徴量（累積計算）---
@@ -159,6 +230,15 @@ class FeatureBuilder:
             lambda rid: CLASS_MAP.get(rider_class_map.get(rid), 6)
         )
 
+        # --- Phase 2b: 選手年齢 ---
+        target_results["rider_age"] = target_results.apply(
+            lambda row: (
+                int(str(row["race_date"])[:4]) - rider_birth_year_map.get(row["rider_id"], 0)
+                if rider_birth_year_map.get(row["rider_id"])
+                else 0
+            ), axis=1
+        )
+
         # rider_statsをマージ
         stats_df = pd.DataFrame(rider_stats)
         if not stats_df.empty:
@@ -170,6 +250,17 @@ class FeatureBuilder:
         line_feats = self._compute_line_features(target_results)
         target_results = target_results.merge(
             line_feats, on=["race_id", "rider_id"], how="left"
+        )
+
+        # --- Phase 2c: 上がりタイム正規化 ---
+        bank_len = target_results["race_bank_length"].replace(0, DEFAULT_BANK_LENGTH)
+        avg_lap = target_results.get("rider_avg_last_1lap", 0)
+        avg_lap_r5 = target_results.get("rider_avg_last_1lap_recent5", 0)
+        target_results["rider_normalized_last_1lap"] = np.where(
+            avg_lap > 0, avg_lap / bank_len * 400, 0.0
+        )
+        target_results["rider_normalized_last_1lap_recent5"] = np.where(
+            avg_lap_r5 > 0, avg_lap_r5 / bank_len * 400, 0.0
         )
 
         # --- 交互作用特徴量 ---
@@ -560,6 +651,16 @@ class FeatureBuilder:
 
             df = pd.DataFrame(rows)
             if not df.empty:
+                # Phase 2c: 上がりタイム正規化
+                bl = df["race_bank_length"].replace(0, DEFAULT_BANK_LENGTH)
+                avg_l = df.get("rider_avg_last_1lap", 0)
+                avg_l5 = df.get("rider_avg_last_1lap_recent5", 0)
+                df["rider_normalized_last_1lap"] = np.where(
+                    avg_l > 0, avg_l / bl * 400, 0.0
+                )
+                df["rider_normalized_last_1lap_recent5"] = np.where(
+                    avg_l5 > 0, avg_l5 / bl * 400, 0.0
+                )
                 # レース内相対順位
                 df["class_rank_in_race"] = df["rider_class_num"].rank(method="min")
                 df["score_rank_in_race"] = df["rider_competition_score"].rank(method="min", ascending=False)

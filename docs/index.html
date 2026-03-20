@@ -625,6 +625,67 @@ body {
 .tag-chuuana { background: var(--grade-g2); }
 .tag-ouana { background: var(--grade-gp); }
 
+/* 本命スコア（◎-○スコア差 + 推奨賭け金） */
+.honmei-box {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+}
+.honmei-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.honmei-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sub);
+}
+.honmei-value {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+.honmei-level {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: #fff;
+}
+.honmei-high { background: #dc2626; }
+.honmei-med { background: #ea580c; }
+.honmei-low { background: #94a3b8; }
+.honmei-bet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.honmei-bet-label {
+  color: var(--sub);
+  font-weight: 600;
+}
+.honmei-bet-amount {
+  font-weight: 800;
+  font-size: 14px;
+}
+.honmei-bar {
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.honmei-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
 /* ローディング / エラー */
 .loading, .empty-msg, .error-msg {
   text-align: center;
@@ -1281,40 +1342,99 @@ body {
       }
       h += '</tbody></table>';
 
-      if (!hasRes && data.length >= 3) h += buildBetSection(data);
+      if (data.length >= 3) {
+        if (hasRes) {
+          // 結果あり: 本命スコアのみ表示（買い目は非表示）
+          h += buildHonmeiBox(data);
+        } else {
+          // 結果なし: 本命スコア + 買い目推奨
+          h += buildBetSection(data);
+        }
+      }
       el.innerHTML = h;
     } catch (err) {
       el.innerHTML = '<div class="error-msg">読み込みエラー: ' + err.message + '</div>';
     }
   }
 
+  /* ── 本命スコア（結果あり用） ── */
+  function buildHonmeiBox(data) {
+    const sorted = data.slice().sort((a, b) => a.predicted_rank - b.predicted_rank);
+    if (sorted.length < 2) return '';
+    const gap12 = (sorted[0].predicted_score || 0) - (sorted[1].predicted_score || 0);
+    let lvl, lvlLabel, betRec, betColor, barPct;
+    if (gap12 >= 0.89) {
+      lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
+      betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    } else if (gap12 >= 0.35) {
+      lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
+      betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    } else {
+      lvl = "low"; lvlLabel = "LOW"; betRec = "見送り";
+      betColor = "#94a3b8"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    }
+    let h = '<div class="bet-section">';
+    h += '<div class="honmei-box">';
+    h += '<div class="honmei-row">';
+    h += '<span class="honmei-label">本命スコア</span>';
+    h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
+    h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
+    h += '</div>';
+    h += '<div class="honmei-bet">';
+    h += '<span class="honmei-bet-label">2連単◎→○▲△△ 推奨:</span>';
+    h += '<span class="honmei-bet-amount" style="color:' + betColor + '">' + betRec + '</span>';
+    h += '</div>';
+    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + betColor + '"></div></div>';
+    h += '</div></div>';
+    return h;
+  }
+
   /* ── 買い目推奨 ── */
   function buildBetSection(data) {
-    const scores = data.map(d => d.predicted_score || 0);
-    const maxS = Math.max(...scores);
-    const exps = scores.map(s => Math.exp((s - maxS) * 3));
-    const sumE = exps.reduce((a, b) => a + b, 0);
-    const probs = exps.map(e => e / sumE);
     const top = data.slice(0, 5).map((d, i) => ({
       rank: i+1, mark: d.mark || "", bike: d.bike_number || "?",
-      name: (d.rider_name || "").slice(0, 4), prob: probs[i], score: d.predicted_score || 0,
+      name: (d.rider_name || "").slice(0, 4), score: d.predicted_score || 0,
     }));
 
     const gap12 = top[0].score - top[1].score;
-    let lvl, pct, fillCls, label;
-    if (gap12 > 0.25) { lvl = "high"; pct = 85; fillCls = "conf-fill-high"; label = "堅いレース"; }
-    else if (gap12 > 0.1) { lvl = "mid"; pct = 60; fillCls = "conf-fill-mid"; label = "普通"; }
-    else { lvl = "low"; pct = 35; fillCls = "conf-fill-low"; label = "混戦"; }
+    let lvl, lvlLabel, betRec, betColor, barPct;
+    if (gap12 >= 0.89) {
+      lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
+      betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    } else if (gap12 >= 0.35) {
+      lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
+      betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    } else {
+      lvl = "low"; lvlLabel = "LOW"; betRec = "見送り";
+      betColor = "#94a3b8"; barPct = Math.min(gap12 / 1.5 * 100, 100);
+    }
 
     let h = '<div class="bet-section">';
-    h += '<div class="bet-header"><span class="bet-title">おすすめ買い目</span>';
-    h += '<span class="bet-conf-label" style="background:' + (lvl === "high" ? "#fef2f2;color:#dc2626" : lvl === "mid" ? "#fff7ed;color:#ea580c" : "#f1f5f9;color:#64748b") + '">' + label + '</span>';
-    h += '<div class="conf-bar"><div class="conf-fill ' + fillCls + '" style="width:' + pct + '%"></div></div>';
+
+    // 本命スコア表示
+    h += '<div class="honmei-box">';
+    h += '<div class="honmei-row">';
+    h += '<span class="honmei-label">本命スコア</span>';
+    h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
+    h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
+    h += '</div>';
+    h += '<div class="honmei-bet">';
+    h += '<span class="honmei-bet-label">2連単◎→○▲△△ 推奨:</span>';
+    h += '<span class="honmei-bet-amount" style="color:' + betColor + '">' + betRec + '</span>';
+    h += '</div>';
+    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + betColor + '"></div></div>';
     h += '</div>';
 
-    h += '<div class="bet-group-label">2車単（1着-2着）</div>';
-    const ex = [{ a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" }, { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" }];
-    if (lvl !== "high") {
+    h += '<div class="bet-header"><span class="bet-title">おすすめ買い目</span></div>';
+
+    h += '<div class="bet-group-label">2連単（◎1着固定→○▲△△）</div>';
+    const ex = [
+      { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
+      { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" },
+      { a: top[0], b: top[3], tag: "穴", cls: "tag-chuuana" },
+      { a: top[0], b: top[4], tag: "穴", cls: "tag-chuuana" },
+    ].filter(e => e.a && e.b);
+    if (lvl === "low") {
       ex.push({ a: top[1], b: top[0], tag: "中穴", cls: "tag-chuuana" });
       if (top[2]) ex.push({ a: top[1], b: top[2], tag: "中穴", cls: "tag-chuuana" });
     }
@@ -1331,8 +1451,8 @@ body {
         { a: top[0], b: top[2], c: top[1], tag: "対抗", cls: "tag-honmei" },
       ];
       if (lvl !== "high" && top[3]) {
-        tr.push({ a: top[0], b: top[1], c: top[3], tag: "中穴", cls: "tag-chuuana" });
-        tr.push({ a: top[1], b: top[0], c: top[2], tag: "中穴", cls: "tag-chuuana" });
+        tr.push({ a: top[0], b: top[1], c: top[3], tag: "穴", cls: "tag-chuuana" });
+        tr.push({ a: top[1], b: top[0], c: top[2], tag: "穴", cls: "tag-chuuana" });
       }
       if (lvl === "low" && top[3]) tr.push({ a: top[0], b: top[2], c: top[3], tag: "大穴", cls: "tag-ouana" });
       for (const t of tr) {

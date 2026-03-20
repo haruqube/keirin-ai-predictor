@@ -8,7 +8,7 @@
 import sqlite3
 from features.base import BaseFeatureBuilder
 from db.schema import get_connection
-from config import GRADE_MAP, BANK_LENGTH, DEFAULT_BANK_LENGTH
+from config import GRADE_MAP, BANK_LENGTH, DEFAULT_BANK_LENGTH, WEATHER_MAP, TRACK_CONDITION_MAP
 
 
 class RaceFeatureBuilder(BaseFeatureBuilder):
@@ -24,10 +24,16 @@ class RaceFeatureBuilder(BaseFeatureBuilder):
             "entry_frame_number",
             "entry_bike_number",
             "entry_gear_ratio",
-            # --- 新規特徴量 ---
+            # --- 出走表統計 ---
             "entry_competition_score",   # 出走表記載の競走得点
             "entry_win_rate",            # 出走表記載の勝率
             "entry_place_rate",          # 出走表記載の連対率
+            # --- 天候・バンク状態 ---
+            "race_weather",              # 天候（数値化）
+            "race_track_condition",      # バンク状態（数値化）
+            # --- オッズ・人気 ---
+            "entry_odds",                # レース前オッズ
+            "entry_popularity",          # 人気順位
         ]
 
     def build(self, race_id: str, rider_id: str, race_date: str,
@@ -91,11 +97,17 @@ class RaceFeatureBuilder(BaseFeatureBuilder):
             feats["race_bank_length"] = BANK_LENGTH.get(velodrome, DEFAULT_BANK_LENGTH)
             feats["race_rider_count"] = race["rider_count"] or 9
             feats["race_number"] = race["race_number"] or 1
+            feats["race_weather"] = WEATHER_MAP.get(
+                _get_field(race, "weather", None), 0)
+            feats["race_track_condition"] = TRACK_CONDITION_MAP.get(
+                _get_field(race, "track_condition", None), 0)
         else:
             feats["race_grade_num"] = 6
             feats["race_bank_length"] = DEFAULT_BANK_LENGTH
             feats["race_rider_count"] = 9
             feats["race_number"] = 1
+            feats["race_weather"] = 0
+            feats["race_track_condition"] = 0
 
         if entry:
             feats["entry_frame_number"] = entry["frame_number"] or 1
@@ -105,6 +117,8 @@ class RaceFeatureBuilder(BaseFeatureBuilder):
             feats["entry_competition_score"] = _get_field(entry, "avg_competition_score", 0.0)
             feats["entry_win_rate"] = _get_field(entry, "win_rate", 0.0)
             feats["entry_place_rate"] = _get_field(entry, "place_rate", 0.0)
+            feats["entry_odds"] = _get_field(entry, "odds", 0.0)
+            feats["entry_popularity"] = _get_field(entry, "popularity", 5)
         else:
             feats["entry_frame_number"] = 1
             feats["entry_bike_number"] = 1
@@ -112,6 +126,8 @@ class RaceFeatureBuilder(BaseFeatureBuilder):
             feats["entry_competition_score"] = 0.0
             feats["entry_win_rate"] = 0.0
             feats["entry_place_rate"] = 0.0
+            feats["entry_odds"] = 0.0
+            feats["entry_popularity"] = 5
 
         return feats
 

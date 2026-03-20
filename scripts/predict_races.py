@@ -248,6 +248,18 @@ def predict_races(date: str, velodromes: str = "major"):
 
             df = df.sort_values("pred_score", ascending=False).reset_index(drop=True)
 
+            # 本命スコア（◎-○スコア差）→ 推奨賭け金判定
+            score_gap = 0.0
+            if len(df) >= 2:
+                score_gap = df.iloc[0]["pred_score"] - df.iloc[1]["pred_score"]
+
+            if score_gap >= 0.89:
+                gap_label, bet_rec = "HIGH", "500円×4点=2,000円"
+            elif score_gap >= 0.35:
+                gap_label, bet_rec = "MED", "100円×4点=400円"
+            else:
+                gap_label, bet_rec = "LOW", "見送り"
+
             velodrome = entry_data.get("velodrome", "?")
             rnum = entry_data.get("race_number", "?")
 
@@ -258,6 +270,7 @@ def predict_races(date: str, velodromes: str = "major"):
 
             print(f"\n{'='*50}")
             print(f"  {velodrome} {rnum}R")
+            print(f"  本命スコア: {score_gap:.2f} ({gap_label}) → {bet_rec}")
             print(f"{'='*50}")
 
             for i, row in df.iterrows():
@@ -276,6 +289,7 @@ def predict_races(date: str, velodromes: str = "major"):
                     "predicted_score": row["pred_score"],
                     "predicted_rank": rank,
                     "mark": mark,
+                    "confidence": score_gap,
                 })
 
                 all_predictions.append({

@@ -58,6 +58,8 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
             "rider_competition_score",
             # 平均着差
             "rider_avg_margin",
+            # 選手年齢
+            "rider_age",
         ]
 
     def build(self, race_id: str, rider_id: str, race_date: str,
@@ -79,7 +81,7 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
         results = {}
         # バンク情報を取得
         race = conn.execute(
-            "SELECT velodrome FROM races WHERE race_id = ?", (race_id,)
+            "SELECT velodrome, date FROM races WHERE race_id = ?", (race_id,)
         ).fetchone()
         velodrome = race["velodrome"] if race else None
 
@@ -103,12 +105,23 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
 
         feats = {}
 
-        # 級班
+        # 級班・生年
         rider = conn.execute(
-            "SELECT class FROM riders WHERE rider_id = ?", (rider_id,)
+            "SELECT class, birth_year FROM riders WHERE rider_id = ?", (rider_id,)
         ).fetchone()
         rider_class = rider["class"] if rider else None
         feats["rider_class_num"] = CLASS_MAP.get(rider_class, 6)
+
+        # 選手年齢
+        birth_year = rider["birth_year"] if rider and rider["birth_year"] else None
+        if birth_year:
+            try:
+                race_year = int(race_date[:4])
+                feats["rider_age"] = race_year - birth_year
+            except (ValueError, TypeError):
+                feats["rider_age"] = 0
+        else:
+            feats["rider_age"] = 0
 
         total = len(past)
         feats["rider_race_count"] = total
