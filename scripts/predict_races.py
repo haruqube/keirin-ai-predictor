@@ -20,7 +20,7 @@ from models.lgbm_ranker import LGBMRanker
 logger = logging.getLogger(__name__)
 
 MARKS = ["◎", "○", "▲", "△", "△"]
-MAJOR_CODES = ["22", "25", "27", "28", "31", "33", "34", "41", "53", "55", "74", "81"]
+MAJOR_CODES = ["22", "25", "27", "28", "31", "34", "35", "42", "54", "56", "75", "81"]
 
 # ライン補正パラメータ（グリッドサーチ最適化済み）
 LINE_BONUS = {
