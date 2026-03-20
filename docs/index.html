@@ -672,6 +672,139 @@ body {
 }
 .venue-live-tag { background: #fef2f2; color: #dc2626; }
 .venue-done-tag { background: #f1f5f9; color: #94a3b8; }
+
+/* ── 前日の結果セクション ── */
+.yday-section { margin-bottom: 16px; }
+.yday-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.yday-stat {
+  flex: 1;
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  padding: 10px 6px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.yday-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+.yday-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.yday-stat-sub {
+  font-size: 10px;
+  color: var(--sub);
+  font-weight: 500;
+}
+.yday-card {
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.1s;
+  border-left: 3px solid transparent;
+}
+.yday-card:active { transform: scale(0.98); }
+.yday-card.yday-high-hit { border-left-color: #059669; }
+.yday-card.yday-high-miss { border-left-color: #dc2626; }
+.yday-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.yday-venue {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.yday-hit {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #dcfce7;
+  color: #059669;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.yday-miss {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.yday-comparison {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.yday-rider {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface);
+}
+.yday-rider.yday-in-top3 { background: #f0fdf4; }
+.yday-arrow { color: var(--muted); font-size: 10px; margin: 0 1px; }
+.yday-finish { font-weight: 700; font-size: 12px; }
+.yday-in-top3 .yday-finish { color: #059669; }
+.yday-out-top3 .yday-finish { color: #94a3b8; }
+.yday-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+  gap: 3px;
+}
+.yday-top3-label {
+  font-size: 10px;
+  color: var(--sub);
+  font-weight: 600;
+}
+.yday-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.yday-dot-hit { background: #059669; }
+.yday-dot-miss { background: #e2e8f0; }
+.yday-toggle {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  font-family: inherit;
+  min-height: 44px;
+}
+.yday-toggle:active { background: var(--accent-light); }
 </style>
 </head>
 <body>
@@ -684,6 +817,7 @@ body {
 <!-- 日付選択画面 -->
 <div id="dateScreen" class="date-screen screen">
   <div id="recommendSection" class="recommend-section"></div>
+  <div id="yesterdaySection"></div>
   <div class="date-nav">
     <button class="date-btn primary" id="todayBtn">今日</button>
     <button class="date-btn secondary" id="tomorrowBtn">明日</button>
@@ -1213,6 +1347,169 @@ body {
     return h;
   }
 
+  /* ── 前日の結果 ── */
+  async function loadYesterdayResults() {
+    var el = $("#yesterdaySection");
+    try {
+      // 今日より前の最新の結果日を取得
+      var today = todayStr();
+      var { data: recent, error: e1 } = await sb
+        .from("prediction_detail")
+        .select("race_date")
+        .not("finish_position", "is", null)
+        .lt("race_date", today)
+        .order("race_date", { ascending: false })
+        .limit(1);
+      if (e1 || !recent || recent.length === 0) { el.innerHTML = ""; return; }
+      var targetDate = recent[0].race_date;
+
+      var { data, error } = await sb
+        .from("prediction_detail")
+        .select("race_id, velodrome, race_number, grade, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, finish_position")
+        .eq("race_date", targetDate)
+        .order("race_id")
+        .order("predicted_rank");
+      if (error) throw error;
+      if (!data || data.length === 0) { el.innerHTML = ""; return; }
+
+      // レースごとにグループ化
+      var groups = {};
+      for (var r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
+
+      var totalRaces = 0, top1Hits = 0, top3Overlap = 0, top3Total = 0;
+      var raceCards = [];
+
+      for (var raceId of Object.keys(groups).sort()) {
+        var rows = groups[raceId];
+        var hasResults = rows.some(function(r) { return r.finish_position != null; });
+        if (!hasResults) continue;
+
+        totalRaces++;
+        var sorted = rows.slice().sort(function(a, b) { return a.predicted_rank - b.predicted_rank; });
+        var predTop3 = sorted.slice(0, 3);
+        var actualTop3Set = new Set();
+        for (var r of rows) { if (r.finish_position != null && r.finish_position <= 3) actualTop3Set.add(r.bike_number); }
+
+        // ◎的中判定
+        var top1Row = predTop3[0];
+        var isTop1Hit = top1Row && top1Row.finish_position === 1;
+        if (isTop1Hit) top1Hits++;
+
+        // Top3一致数
+        var overlap = 0;
+        for (var p of predTop3) {
+          if (p.finish_position != null && p.finish_position <= 3) overlap++;
+        }
+        top3Overlap += overlap;
+        top3Total += Math.min(3, actualTop3Set.size);
+
+        // 信頼度
+        var conf = sorted.length >= 3 ? sorted[0].predicted_score - sorted[2].predicted_score : 0;
+        var isHighConf = conf >= 2.3;
+
+        raceCards.push({
+          raceId: raceId,
+          velodrome: rows[0].velodrome,
+          raceNumber: rows[0].race_number,
+          grade: rows[0].grade,
+          conf: conf,
+          isHighConf: isHighConf,
+          isTop1Hit: isTop1Hit,
+          overlap: overlap,
+          predTop3: predTop3
+        });
+      }
+
+      if (totalRaces === 0) { el.innerHTML = ""; return; }
+
+      var top1Pct = (top1Hits / totalRaces * 100).toFixed(1);
+      var top3Pct = top3Total > 0 ? (top3Overlap / top3Total * 100).toFixed(1) : "0.0";
+
+      var h = '<div class="yday-section">';
+      h += '<div class="section-header">';
+      h += '<div class="section-icon">&#128202;</div>';
+      h += '<span class="section-title">前日の結果</span>';
+      h += '<span class="section-badge">' + formatDate(targetDate) + '</span>';
+      h += '</div>';
+
+      // サマリー
+      h += '<div class="yday-summary">';
+      h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
+      h += '<div class="yday-stat"><span class="yday-stat-value">' + top3Pct + '%</span><span class="yday-stat-label">Top3一致</span><span class="yday-stat-sub">' + top3Overlap + '/' + top3Total + '</span></div>';
+      h += '<div class="yday-stat"><span class="yday-stat-value">' + totalRaces + '</span><span class="yday-stat-label">レース</span></div>';
+      h += '</div>';
+
+      // レースカード (最初5件表示、残りは折りたたみ)
+      var INITIAL_SHOW = 5;
+      for (var i = 0; i < raceCards.length; i++) {
+        var rc = raceCards[i];
+        var cardCls = "yday-card";
+        if (rc.isHighConf && rc.isTop1Hit) cardCls += " yday-high-hit";
+        else if (rc.isHighConf && !rc.isTop1Hit) cardCls += " yday-high-miss";
+        var hiddenAttr = i >= INITIAL_SHOW ? ' style="display:none"' : '';
+
+        h += '<div class="' + cardCls + '" data-raceid="' + rc.raceId + '"' + hiddenAttr + ' data-yday-card>';
+        h += '<div class="yday-card-top">';
+        h += '<span class="yday-venue">' + rc.velodrome + ' ' + rc.raceNumber + 'R</span>';
+        h += gradeBadge(rc.grade);
+        h += confBadge(rc.conf);
+        if (rc.isTop1Hit) h += '<span class="yday-hit">&#9678;&#30340;&#20013;</span>';
+        else h += '<span class="yday-miss">&#9678;&#12495;&#12474;&#12524;</span>';
+        h += '</div>';
+
+        // 予測Top3 → 実際の着順
+        h += '<div class="yday-comparison">';
+        for (var p of rc.predTop3) {
+          var mc = markClass(p.mark);
+          var inT3 = p.finish_position != null && p.finish_position <= 3;
+          h += '<span class="yday-rider ' + (inT3 ? 'yday-in-top3' : 'yday-out-top3') + '">';
+          h += '<span class="mark ' + mc + '" style="font-size:13px">' + (p.mark || "") + '</span>';
+          h += bikeCircle(p.bike_number);
+          h += '<span class="yday-arrow">&#8594;</span>';
+          h += '<span class="yday-finish">' + (p.finish_position != null ? p.finish_position + '&#30528;' : '-') + '</span>';
+          h += '</span>';
+        }
+        h += '</div>';
+
+        h += '<div class="yday-bottom">';
+        h += '<span class="yday-top3-label">Top3: ' + rc.overlap + '/3</span>';
+        for (var d = 0; d < 3; d++) {
+          h += '<span class="yday-dot ' + (d < rc.overlap ? 'yday-dot-hit' : 'yday-dot-miss') + '"></span>';
+        }
+        h += '</div>';
+        h += '</div>';
+      }
+
+      if (raceCards.length > INITIAL_SHOW) {
+        h += '<button class="yday-toggle" id="ydayToggle">残り ' + (raceCards.length - INITIAL_SHOW) + ' レースを表示</button>';
+      }
+      h += '</div>';
+
+      el.innerHTML = h;
+
+      // カードクリック → レース詳細
+      el.querySelectorAll(".yday-card").forEach(function(c) {
+        c.addEventListener("click", function() { loadRaceDetail(c.dataset.raceid); });
+      });
+
+      // 折りたたみトグル
+      var toggleBtn = $("#ydayToggle");
+      if (toggleBtn) {
+        var expanded = false;
+        toggleBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          expanded = !expanded;
+          el.querySelectorAll("[data-yday-card]").forEach(function(c, idx) {
+            if (idx >= INITIAL_SHOW) c.style.display = expanded ? "" : "none";
+          });
+          toggleBtn.textContent = expanded
+            ? "折りたたむ"
+            : "残り " + (raceCards.length - INITIAL_SHOW) + " レースを表示";
+        });
+      }
+    } catch (e) { el.innerHTML = ""; }
+  }
+
   /* ── イベント ── */
   $("#todayBtn").addEventListener("click", function() { loadVenueList(todayStr()); });
   $("#tomorrowBtn").addEventListener("click", function() { loadVenueList(tomorrowStr()); });
@@ -1226,6 +1523,7 @@ body {
 
   $("#dateInput").value = todayStr();
   loadRecommendations();
+  loadYesterdayResults();
 
   (async function loadLatestDates() {
     const el = $("#latestInfo");
