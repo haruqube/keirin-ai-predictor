@@ -20,7 +20,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import numpy as np
 import pandas as pd
-from config import RESULTS_DIR, GRADE_MAP
+from config import RESULTS_DIR, GRADE_MAP, get_bet_category
 from features.builder import FeatureBuilder
 from models.lgbm_ranker import LGBMRanker
 from db.schema import get_connection
@@ -97,18 +97,7 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
         confidence = pred.iloc[0]["pred_score"] - pred.iloc[1]["pred_score"]
 
         # 賭けカテゴリ判定
-        if confidence >= 1.00:
-            bet_cat = "HIGH"
-            bet_per_ticket = 500
-        elif 0.80 <= confidence < 1.00:
-            bet_cat = "MED+"
-            bet_per_ticket = 200
-        elif 0.50 <= confidence < 0.80:
-            bet_cat = "MED"
-            bet_per_ticket = 100
-        else:
-            bet_cat = "SKIP"
-            bet_per_ticket = 0
+        bet_cat, _, bet_per_ticket = get_bet_category(confidence, grade)
 
         # ◎ の的中確認
         honmei_rid = pred.iloc[0]["rider_id"]

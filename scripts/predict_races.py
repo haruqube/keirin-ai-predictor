@@ -11,7 +11,10 @@ import re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import NETKEIRIN_BASE_URL, VELODROME_CODES, RESULTS_DIR
+from config import (
+    NETKEIRIN_BASE_URL, VELODROME_CODES, RESULTS_DIR, CLASS_MAP,
+    MARKS, LINE_BONUS, STRONGEST_LINE_BONUS, get_bet_category,
+)
 from db.schema import get_connection, insert_race, insert_rider, insert_entry, insert_prediction
 from data.scraper import KeirinScraper
 from features.builder import FeatureBuilder
@@ -19,25 +22,11 @@ from models.lgbm_ranker import LGBMRanker
 
 logger = logging.getLogger(__name__)
 
-MARKS = ["◎", "○", "▲", "△", "△"]
 MAJOR_CODES = ["22", "25", "27", "28", "31", "34", "35", "42", "54", "56", "75", "81"]
-
-# ライン補正パラメータ（グリッドサーチ最適化済み）
-LINE_BONUS = {
-    (3, "番手"): 0.30,    # 3人ラインの番手が最有利
-    (3, "自力"): -0.20,   # 先頭は風を受けて不利
-    (3, "3番手"): -0.30,  # 後方すぎて展開が苦しい
-    (2, "番手"): 0.10,
-    (2, "自力"): 0.225,
-    (1, "自力"): 0.10,
-}
-STRONGEST_LINE_BONUS = 0.20
 
 
 def apply_line_bonus(df, entries, line_formation):
     """ライン構成に基づくボーナススコアを計算"""
-    from config import CLASS_MAP
-
     # 車番→rider_idマッピング
     bike_to_rider = {e["bike_number"]: e["rider_id"] for e in entries if e.get("bike_number") and e.get("rider_id")}
     # rider_id→class
@@ -257,16 +246,7 @@ def predict_races(date: str, velodromes: str = "major"):
             race_grade = entry_data.get("grade", "")
             is_f2 = (race_grade == "F2")
 
-            if is_f2:
-                gap_label, bet_rec = "SKIP", "見送り（F2）"
-            elif score_gap >= 1.00:
-                gap_label, bet_rec = "HIGH", "500円×4点=2,000円"
-            elif 0.80 <= score_gap < 1.00:
-                gap_label, bet_rec = "MED+", "200円×4点=800円"
-            elif 0.50 <= score_gap < 0.80:
-                gap_label, bet_rec = "MED", "100円×4点=400円"
-            else:
-                gap_label, bet_rec = "LOW", "見送り"
+            gap_label, bet_rec, _ = get_bet_category(score_gap, race_grade)
 
             velodrome = entry_data.get("velodrome", "?")
             rnum = entry_data.get("race_number", "?")

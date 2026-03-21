@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config import (
-    DB_PATH, VELODROME_CODES, RESULTS_DIR,
+    DB_PATH, VELODROME_CODES, RESULTS_DIR, MARKS,
     SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY,
 )
 from db.schema import (
@@ -35,67 +35,13 @@ from db.schema import (
 from data.scraper import KeirinScraper
 from features.builder import FeatureBuilder
 from models.lgbm_ranker import LGBMRanker
+from scripts.predict_races import apply_line_bonus
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-MARKS = ["◎", "○", "▲", "△", "△"]
-
-# ライン補正パラメータ（predict_races.py と同じ）
-LINE_BONUS = {
-    (3, "番手"): 0.30,
-    (3, "自力"): -0.20,
-    (3, "3番手"): -0.30,
-    (2, "番手"): 0.10,
-    (2, "自力"): 0.225,
-    (1, "自力"): 0.10,
-}
-STRONGEST_LINE_BONUS = 0.20
-
-
-def apply_line_bonus(df, entries, line_formation):
-    """ライン構成に基づくボーナススコアを計算"""
-    from config import CLASS_MAP
-    bike_to_rider = {e["bike_number"]: e["rider_id"] for e in entries if e.get("bike_number") and e.get("rider_id")}
-    rider_class = {e["rider_id"]: e.get("class", "") for e in entries if e.get("rider_id")}
-    line_scores = []
-    for line in line_formation:
-        score = 0
-        for member in line:
-            bn = member["bike_number"]
-            rid = bike_to_rider.get(bn, "")
-            cls = rider_class.get(rid, "")
-            cls_num = CLASS_MAP.get(cls, 6)
-            score += (7 - cls_num)
-        line_scores.append(score)
-    strongest_idx = line_scores.index(max(line_scores)) if line_scores else -1
-    rider_line_info = {}
-    for line_idx, line in enumerate(line_formation):
-        line_size = len(line)
-        for pos, member in enumerate(line):
-            bn = member["bike_number"]
-            rid = bike_to_rider.get(bn, "")
-            if not rid:
-                continue
-            role = "自力" if pos == 0 else ("番手" if pos == 1 else "3番手")
-            is_strongest = (line_idx == strongest_idx)
-            rider_line_info[rid] = (line_size, role, is_strongest)
-    bonuses = []
-    for _, row in df.iterrows():
-        rid = row["rider_id"]
-        info = rider_line_info.get(rid)
-        if info is None:
-            bonuses.append(0.0)
-            continue
-        line_size, role, is_strongest = info
-        bonus = LINE_BONUS.get((line_size, role), 0.0)
-        if is_strongest:
-            bonus += STRONGEST_LINE_BONUS
-        bonuses.append(bonus)
-    return bonuses
 
 
 def get_date_range(from_date: str, to_date: str) -> list[str]:
@@ -110,9 +56,6 @@ def get_date_range(from_date: str, to_date: str) -> list[str]:
     return dates
 
 
-MAJOR_CODES = ["22", "25", "27", "28", "31", "34", "35", "42", "54", "56", "75", "81"]
-
-
 def discover_race_ids(conn, scraper, date: str) -> list[str]:
     """指定日のrace_idを取得（DB優先、なければスクレイピング）"""
     formatted = f"{date[:4]}-{date[4:6]}-{date[6:8]}"
@@ -125,7 +68,7 @@ def discover_race_ids(conn, scraper, date: str) -> list[str]:
         return [r[0] for r in existing]
 
     # スクレイピングで発見（主要12場のみ = 実運用と同じ）
-    from scripts.predict_races import get_race_ids_for_date
+    from scripts.predict_races import get_race_ids_for_date, MAJOR_CODES
     race_ids = get_race_ids_for_date(scraper, date, MAJOR_CODES)
     return race_ids
 

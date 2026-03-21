@@ -8,11 +8,9 @@ import argparse
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import RESULTS_DIR
+from config import RESULTS_DIR, get_bet_category
 from db.schema import get_connection
 from publishing.note_formatter import NoteFormatter
-
-MARKS = ["◎", "○", "▲", "△", "△"]
 
 
 def get_predictions_for_date(date: str) -> list[dict]:
@@ -64,16 +62,7 @@ def get_predictions_for_date(date: str) -> list[dict]:
         # 信頼度・推奨賭け金
         confidence = preds[0]["confidence"] if preds else 0.0
         grade = race_row["grade"] or ""
-        if grade == "F2":
-            bet_label, bet_rec = "SKIP", "見送り（F2）"
-        elif confidence >= 1.00:
-            bet_label, bet_rec = "HIGH", "500円×4点=2,000円"
-        elif confidence >= 0.80:
-            bet_label, bet_rec = "MED+", "200円×4点=800円"
-        elif confidence >= 0.50:
-            bet_label, bet_rec = "MED", "100円×4点=400円"
-        else:
-            bet_label, bet_rec = "LOW", "見送り"
+        bet_label, bet_rec, _ = get_bet_category(confidence, grade)
 
         races.append({
             "race_id": race_id,

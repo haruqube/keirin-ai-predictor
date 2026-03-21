@@ -11,8 +11,12 @@ import logging
 import pandas as pd
 import numpy as np
 from db.schema import get_connection
+from datetime import datetime
 from config import (CLASS_MAP, GRADE_MAP, BANK_LENGTH, DEFAULT_BANK_LENGTH,
-                     WEATHER_MAP, TRACK_CONDITION_MAP)
+                     WEATHER_MAP, TRACK_CONDITION_MAP,
+                     DEFAULT_GEAR_RATIO, DEFAULT_RIDER_COUNT,
+                     DEFAULT_AVG_FINISH_POS, DEFAULT_DAYS_SINCE_LAST_RACE,
+                     DEFAULT_AVG_MARGIN)
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +160,14 @@ class FeatureBuilder:
             lambda rid: BANK_LENGTH.get(race_map.loc[rid, "velodrome"] if rid in race_map.index else "", DEFAULT_BANK_LENGTH)
         )
         target_results["race_rider_count"] = target_results["race_id"].map(
-            lambda rid: race_map.loc[rid, "rider_count"] if rid in race_map.index else 9
-        ).fillna(9).astype(int)
+            lambda rid: race_map.loc[rid, "rider_count"] if rid in race_map.index else DEFAULT_RIDER_COUNT
+        ).fillna(DEFAULT_RIDER_COUNT).astype(int)
         target_results["race_number"] = target_results["race_id"].map(
             lambda rid: race_map.loc[rid, "race_number"] if rid in race_map.index else 1
         ).fillna(1).astype(int)
         target_results["entry_frame_number"] = target_results["frame_number"].fillna(1)
         target_results["entry_bike_number"] = target_results["bike_number"].fillna(1)
-        target_results["entry_gear_ratio"] = pd.to_numeric(target_results["gear_ratio"], errors="coerce").fillna(3.93)
+        target_results["entry_gear_ratio"] = pd.to_numeric(target_results["gear_ratio"], errors="coerce").fillna(DEFAULT_GEAR_RATIO)
 
         # --- Phase 2a: 天候・バンク状態 ---
         target_results["race_weather"] = target_results["race_id"].map(
@@ -303,9 +307,9 @@ class FeatureBuilder:
             "rider_place_rate_recent5": 0, "rider_top3_rate_recent5": 0,
             "rider_win_rate_recent10": 0,
             "rider_place_rate_recent10": 0, "rider_top3_rate_recent10": 0,
-            "rider_avg_finish_pos": 5.0,
-            "rider_avg_finish_pos_recent5": 5.0,
-            "rider_avg_finish_pos_recent10": 5.0,
+            "rider_avg_finish_pos": DEFAULT_AVG_FINISH_POS,
+            "rider_avg_finish_pos_recent5": DEFAULT_AVG_FINISH_POS,
+            "rider_avg_finish_pos_recent10": DEFAULT_AVG_FINISH_POS,
             "rider_race_count": 0,
             "rider_avg_odds": 0, "rider_avg_popularity": 5,
             "rider_avg_last_1lap": 0.0, "rider_avg_last_1lap_recent5": 0.0,
@@ -314,10 +318,10 @@ class FeatureBuilder:
             "rider_venue_win_rate": 0.0, "rider_venue_top3_rate": 0.0,
             "rider_venue_race_count": 0,
             "rider_form_trend": 0.0, "rider_form_acuity": 0.0,
-            "rider_days_since_last_race": 90.0,
+            "rider_days_since_last_race": DEFAULT_DAYS_SINCE_LAST_RACE,
             "rider_finish_pos_std": 0.0,
             "rider_competition_score": 0.0,
-            "rider_avg_margin": 2.0,
+            "rider_avg_margin": DEFAULT_AVG_MARGIN,
         }
 
         total = len(target_entries)
@@ -423,7 +427,6 @@ class FeatureBuilder:
 
             # 前走からの日数
             try:
-                from datetime import datetime
                 last_date = datetime.strptime(str(past[-1, 0])[:10], "%Y-%m-%d")
                 current_date = datetime.strptime(str(race_date)[:10], "%Y-%m-%d")
                 days_since = (current_date - last_date).days
@@ -488,42 +491,10 @@ class FeatureBuilder:
         return stats_list
 
     @staticmethod
-    def _parse_fraction(s: str) -> float:
-        """分数文字列を数値に変換 ('1/2' -> 0.5)"""
-        if not s:
-            return 0.0
-        if '/' in s:
-            parts = s.split('/')
-            try:
-                return float(parts[0]) / float(parts[1])
-            except (ValueError, ZeroDivisionError):
-                return 0.0
-        try:
-            return float(s)
-        except ValueError:
-            return 0.0
-
-    @staticmethod
     def _parse_margin_to_numeric(margin_str) -> float | None:
-        """着差文字列を車身数(float)に変換"""
-        if not margin_str or not isinstance(margin_str, str):
-            return None
-        margin = margin_str.split('(')[0].strip()
-        if not margin:
-            return None
-        if 'タイヤ' in margin:
-            return 0.05
-        if '大差' in margin:
-            return 10.0
-        if '車輪' in margin:
-            num_part = margin.replace('車輪', '').strip()
-            return FeatureBuilder._parse_fraction(num_part) * 0.5
-        if '車身' in margin:
-            parts = margin.split('車身')
-            main = FeatureBuilder._parse_fraction(parts[0].strip()) if parts[0].strip() else 0
-            frac = FeatureBuilder._parse_fraction(parts[1].strip()) if len(parts) > 1 and parts[1].strip() else 0
-            return main + frac
-        return None
+        """着差文字列を車身数(float)に変換（後方互換のためのラッパー）"""
+        from features.margin_parser import parse_margin_to_numeric
+        return parse_margin_to_numeric(margin_str)
 
     def _compute_line_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """ライン特徴量をバッチ計算"""

@@ -7,8 +7,10 @@
 """
 
 import sqlite3
+from datetime import datetime
 from features.base import BaseFeatureBuilder
-from config import CLASS_MAP
+from config import (CLASS_MAP, DEFAULT_AVG_FINISH_POS,
+                     DEFAULT_DAYS_SINCE_LAST_RACE, DEFAULT_AVG_MARGIN)
 
 
 class RiderFeatureBuilder(BaseFeatureBuilder):
@@ -129,11 +131,11 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
         if total == 0:
             for name in self.feature_names:
                 feats.setdefault(name, 0.0)
-            feats["rider_avg_finish_pos"] = 5.0
-            feats["rider_avg_finish_pos_recent5"] = 5.0
-            feats["rider_avg_finish_pos_recent10"] = 5.0
-            feats["rider_avg_popularity"] = 5.0
-            feats["rider_days_since_last_race"] = 90.0
+            feats["rider_avg_finish_pos"] = DEFAULT_AVG_FINISH_POS
+            feats["rider_avg_finish_pos_recent5"] = DEFAULT_AVG_FINISH_POS
+            feats["rider_avg_finish_pos_recent10"] = DEFAULT_AVG_FINISH_POS
+            feats["rider_avg_popularity"] = DEFAULT_AVG_FINISH_POS
+            feats["rider_days_since_last_race"] = DEFAULT_DAYS_SINCE_LAST_RACE
             return feats
 
         positions = [r["finish_position"] for r in past]
@@ -239,7 +241,6 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
         feats["rider_form_acuity"] = recent1_win - feats["rider_win_rate_recent5"]
 
         # 前走からの日数
-        from datetime import datetime
         try:
             last_date = datetime.strptime(past[0]["date"], "%Y-%m-%d")
             current_date = datetime.strptime(race_date, "%Y-%m-%d")
@@ -254,12 +255,12 @@ class RiderFeatureBuilder(BaseFeatureBuilder):
         feats["rider_competition_score"] = sum(scores) / len(scores) if scores else 0.0
 
         # 平均着差
-        from features.builder import FeatureBuilder
+        from features.margin_parser import parse_margin_to_numeric
         margin_nums = []
         for r in past:
-            parsed = FeatureBuilder._parse_margin_to_numeric(r["margin"])
+            parsed = parse_margin_to_numeric(r["margin"])
             if parsed is not None:
                 margin_nums.append(parsed)
-        feats["rider_avg_margin"] = sum(margin_nums) / len(margin_nums) if margin_nums else 2.0
+        feats["rider_avg_margin"] = sum(margin_nums) / len(margin_nums) if margin_nums else DEFAULT_AVG_MARGIN
 
         return feats

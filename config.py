@@ -98,3 +98,46 @@ BANK_LENGTH = {
     "大宮": 500, "立川": 400, "京王閣": 400,
 }
 DEFAULT_BANK_LENGTH = 400
+
+# ── 予測マーク ──
+MARKS = ["◎", "○", "▲", "△", "△"]
+
+# ── ライン補正パラメータ（グリッドサーチ最適化済み） ──
+LINE_BONUS = {
+    (3, "番手"): 0.30,
+    (3, "自力"): -0.20,
+    (3, "3番手"): -0.30,
+    (2, "番手"): 0.10,
+    (2, "自力"): 0.225,
+    (1, "自力"): 0.10,
+}
+STRONGEST_LINE_BONUS = 0.20
+
+# ── 賭け戦略 ──
+BET_STRATEGY = [
+    # (最低信頼度, ラベル, 1点あたり金額, 推奨表示)
+    (1.00, "HIGH", 500, "500円×4点=2,000円"),
+    (0.80, "MED+", 200, "200円×4点=800円"),
+    (0.50, "MED",  100, "100円×4点=400円"),
+]
+BET_SKIP_LABEL = "LOW"
+BET_SKIP_REC = "見送り"
+BET_F2_LABEL = "SKIP"
+BET_F2_REC = "見送り（F2）"
+
+# ── デフォルト値 ──
+DEFAULT_GEAR_RATIO = 3.93
+DEFAULT_RIDER_COUNT = 9
+DEFAULT_AVG_FINISH_POS = 5.0
+DEFAULT_DAYS_SINCE_LAST_RACE = 90.0
+DEFAULT_AVG_MARGIN = 2.0
+
+
+def get_bet_category(confidence: float, grade: str = "") -> tuple[str, str, int]:
+    """信頼度とグレードから賭けカテゴリを判定。(label, rec, bet_per_ticket) を返す。"""
+    if grade == "F2":
+        return BET_F2_LABEL, BET_F2_REC, 0
+    for min_conf, label, amount, rec in BET_STRATEGY:
+        if confidence >= min_conf:
+            return label, rec, amount
+    return BET_SKIP_LABEL, BET_SKIP_REC, 0

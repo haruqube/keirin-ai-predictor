@@ -18,12 +18,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY, RESULTS_DIR, VELODROME_CODES
+from config import (
+    SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY,
+    RESULTS_DIR, VELODROME_CODES, MARKS, get_bet_category,
+)
 
 LOG_DIR = RESULTS_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-MARKS = ["◎", "○", "▲", "△", "△"]
 
 
 def setup_logging(mode: str, date_str: str):
@@ -205,13 +206,8 @@ def generate_detail_report(conn, formatted_date: str, date_str: str) -> str:
         confidence = conf_row["confidence"] or 0.0
 
         # 賭けカテゴリ判定
-        if confidence >= 1.00:
-            bet_per_ticket = 500
-        elif confidence >= 0.80:
-            bet_per_ticket = 200
-        elif confidence >= 0.50:
-            bet_per_ticket = 100
-        else:
+        _, _, bet_per_ticket = get_bet_category(confidence, grade)
+        if bet_per_ticket == 0:
             continue  # SKIP
 
         # ◎→○▲△△ の4点買い
