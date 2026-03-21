@@ -42,7 +42,7 @@ TABLE_COLUMNS = {
     "races": [
         "race_id", "date", "velodrome", "race_number", "race_name",
         "grade", "round", "bank_length", "weather", "track_condition",
-        "rider_count",
+        "rider_count", "start_time",
     ],
     "entries": [
         "race_id", "rider_id", "frame_number", "bike_number", "rider_name",
