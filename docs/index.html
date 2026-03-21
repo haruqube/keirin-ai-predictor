@@ -1381,12 +1381,13 @@ body {
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value">' + totalInvest.toLocaleString() + '円</span><span class="rec-list-stat-label">投資合計</span></div>';
     h += '</div>';
 
-    // ソート切替ボタン
+    // ソート切替ボタン + オッズ更新ボタン
     var confActive = _recSortMode === "confidence" ? "primary" : "secondary";
     var timeActive = _recSortMode === "time" ? "primary" : "secondary";
     h += '<div style="display:flex;gap:8px;margin:0 16px 12px">';
     h += '<button class="date-btn ' + confActive + '" id="recSortConf" style="flex:1;font-size:12px;padding:6px 0">信頼度順</button>';
     h += '<button class="date-btn ' + timeActive + '" id="recSortTime" style="flex:1;font-size:12px;padding:6px 0">時間順</button>';
+    h += '<button class="date-btn secondary" id="recRefreshOdds" style="flex:1;font-size:12px;padding:6px 0">オッズ更新</button>';
     h += '</div>';
 
     // 現在時刻 (HH:MM) を取得（JST）
@@ -1468,6 +1469,54 @@ body {
     });
     $("#recSortConf").addEventListener("click", function() { _recSortMode = "confidence"; renderRecommendList(); });
     $("#recSortTime").addEventListener("click", function() { _recSortMode = "time"; renderRecommendList(); });
+    $("#recRefreshOdds").addEventListener("click", refreshLiveOdds);
+  }
+
+  // リアルタイムオッズ更新
+  var ODDS_FN_URL = "https://yzfoauumlocqdgxojwed.supabase.co/functions/v1/get-odds";
+
+  async function refreshLiveOdds() {
+    var btn = document.getElementById("recRefreshOdds");
+    if (!btn || !_recData || _recData.length === 0) return;
+    btn.textContent = "更新中...";
+    btn.disabled = true;
+
+    var updated = 0;
+    for (var ri = 0; ri < _recData.length; ri++) {
+      var r = _recData[ri];
+      // 締切済みはスキップ
+      var nowJST2 = new Date(Date.now() + (new Date().getTimezoneOffset() + 540) * 60000);
+      var nowHH2 = ('0' + nowJST2.getHours()).slice(-2) + ':' + ('0' + nowJST2.getMinutes()).slice(-2);
+      if (r.startTime && r.startTime <= nowHH2) continue;
+
+      try {
+        var resp = await fetch(ODDS_FN_URL + "?race_id=" + r.id);
+        if (!resp.ok) continue;
+        var od = await resp.json();
+        var exacta = od.exacta || {};
+        var honmeiBike = String(r.top5[0].bike_number).padStart(2, "0");
+        var comboOdds = [];
+
+        for (var ti = 1; ti < Math.min(5, r.top5.length); ti++) {
+          var targetBike = String(r.top5[ti].bike_number).padStart(2, "0");
+          var key = honmeiBike + targetBike;
+          var val = exacta[key];
+          if (val != null) {
+            r.top5[ti].exacta_odds = val;
+            comboOdds.push(val);
+          }
+        }
+        if (comboOdds.length > 0) {
+          r.isTorigami = Math.max.apply(null, comboOdds) < 4.0;
+          r.maxOdds = Math.max.apply(null, comboOdds);
+        }
+        updated++;
+      } catch (e) { /* skip */ }
+    }
+
+    btn.textContent = "オッズ更新 (" + updated + "件)";
+    btn.disabled = false;
+    renderRecommendList();
   }
 
   // 信頼度計算 (◎-○スコア差)
