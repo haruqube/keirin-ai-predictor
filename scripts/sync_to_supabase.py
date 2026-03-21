@@ -58,6 +58,7 @@ TABLE_COLUMNS = {
     "race_payouts": [
         "race_id", "nisyatan_combo", "nisyatan_payout", "nisyatan_popularity",
         "nishafuku_combo", "nishafuku_payout",
+        "sanrentan_combo", "sanrentan_payout", "sanrentan_popularity",
     ],
     "predictions": [
         "race_id", "rider_id", "predicted_score", "predicted_rank",
