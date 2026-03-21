@@ -1385,20 +1385,28 @@ body {
     h += '<button class="date-btn ' + timeActive + '" id="recSortTime" style="flex:1;font-size:12px;padding:6px 0">時間順</button>';
     h += '</div>';
 
+    // 現在時刻 (HH:MM) を取得（JST）
+    var nowJST = new Date(Date.now() + (new Date().getTimezoneOffset() + 540) * 60000);
+    var nowHHMM = ('0' + nowJST.getHours()).slice(-2) + ':' + ('0' + nowJST.getMinutes()).slice(-2);
+
     function renderCard(r) {
+      var expired = r.startTime && r.startTime <= nowHHMM;
       var lvlCls = r.isHigh ? "rec-high" : "rec-med";
       var lvlLabel = r.isHigh ? "HIGH" : "MED";
       var lvlBg = r.isHigh ? "#dc2626" : "#ea580c";
       var betAmount = r.isHigh ? "500\u5186\u00d74" : "100\u5186\u00d74";
       var betTotal = r.isHigh ? "2,000\u5186" : "400\u5186";
       var honmei = r.top5[0];
-      var timeStr = r.startTime ? '<span style="color:var(--muted);font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
+      var timeStr = r.startTime ? '<span style="color:' + (expired ? '#94a3b8' : 'var(--muted)') + ';font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
 
-      var c = '<div class="rec-full-card ' + lvlCls + '" data-raceid="' + r.id + '">';
+      var cardStyle = expired ? ' style="opacity:0.4;pointer-events:auto"' : '';
+      var c = '<div class="rec-full-card ' + lvlCls + '" data-raceid="' + r.id + '"' + cardStyle + '>';
       c += '<div class="rec-full-top">';
-      c += '<span class="rec-full-venue">' + r.velodrome + ' ' + r.raceNumber + 'R ' + gradeBadge(r.grade) + timeStr + '</span>';
-      c += '<span class="rec-full-score" style="color:' + lvlBg + '">' + r.gap.toFixed(2) + '</span>';
-      c += '<span class="rec-full-level" style="background:' + lvlBg + '">' + lvlLabel + '</span>';
+      c += '<span class="rec-full-venue">' + r.velodrome + ' ' + r.raceNumber + 'R ' + gradeBadge(r.grade) + timeStr;
+      if (expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:500">締切</span>';
+      c += '</span>';
+      c += '<span class="rec-full-score" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + r.gap.toFixed(2) + '</span>';
+      c += '<span class="rec-full-level" style="background:' + (expired ? '#94a3b8' : lvlBg) + '">' + lvlLabel + '</span>';
       c += '</div>';
       c += '<div class="rec-full-riders">';
       c += '<span class="rec-full-honmei">';
@@ -1415,7 +1423,7 @@ body {
       c += '</div>';
       c += '<div class="rec-full-bet">';
       c += '<span class="rec-full-bet-label">2\u9023\u5358\u25CE1\u7740\u56FA\u5B9A4\u70B9:</span>';
-      c += '<span class="rec-full-bet-amount" style="color:' + lvlBg + '">' + betAmount + ' = ' + betTotal + '</span>';
+      c += '<span class="rec-full-bet-amount" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + betAmount + ' = ' + betTotal + '</span>';
       c += '</div>';
       c += '</div>';
       return c;
