@@ -1322,11 +1322,13 @@ body {
         var isTorigami = comboOdds.length > 0 && Math.max.apply(null, comboOdds) < 4.0;
         var maxOdds = comboOdds.length > 0 ? Math.max.apply(null, comboOdds) : null;
         // F2は賭け対象外（バックテストで回収率64.5%）
-        if ((gap >= 1.10 || (gap >= 0.50 && gap < 0.80)) && rows[0].grade !== 'F2') {
+        if (gap >= 0.50 && rows[0].grade !== 'F2') {
+          var bi = getBetCategory(gap, false);
           _recData.push({
             id: id, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
-            grade: rows[0].grade, startTime: rows[0].start_time || '', gap: gap, isHigh: gap >= 1.10,
-            top5: sorted.slice(0, 5), isTorigami: isTorigami, maxOdds: maxOdds
+            grade: rows[0].grade, startTime: rows[0].start_time || '', gap: gap, isHigh: gap >= 1.00, isMedPlus: gap >= 0.80 && gap < 1.00,
+            betCat: bi, triCat: getTrifectaCategory(gap, rows[0].grade === 'F2'),
+            betLabel: bi.label, top5: sorted.slice(0, 5), isTorigami: isTorigami, maxOdds: maxOdds
           });
         }
       }
@@ -1334,15 +1336,17 @@ body {
       if (_recData.length === 0) { el.innerHTML = ""; return; }
       _recData.sort(function(a, b) { return b.gap - a.gap; });
 
-      var highCount = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; }).length;
-      var medCount = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; }).length;
+      var highCount = _recData.filter(function(r) { return r.betLabel === 'HIGH' && !r.isTorigami; }).length;
+      var medPlusCount = _recData.filter(function(r) { return r.betLabel === 'MED+' && !r.isTorigami; }).length;
+      var medCount = _recData.filter(function(r) { return r.betLabel === 'MED' && !r.isTorigami; }).length;
       var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
-      var totalInvest = highCount * 2000 + medCount * 400;
+      var totalInvest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
 
       var h = '<div class="rec-banner" id="recBanner">';
       h += '<div class="rec-banner-title">&#9733; 本日のおすすめ</div>';
       h += '<div class="rec-banner-counts">';
       if (highCount > 0) h += '<span class="rec-banner-count">HIGH ' + highCount + '件</span>';
+      if (medPlusCount > 0) h += '<span class="rec-banner-count">MED+ ' + medPlusCount + '件</span>';
       if (medCount > 0) h += '<span class="rec-banner-count">MED ' + medCount + '件</span>';
       if (tgCount > 0) h += '<span class="rec-banner-count" style="color:#94a3b8">見送り ' + tgCount + '件</span>';
       h += '</div>';
@@ -1372,17 +1376,19 @@ body {
       return;
     }
 
-    var highCount = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; }).length;
-    var medCount = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; }).length;
+    var highCount = _recData.filter(function(r) { return r.betLabel === 'HIGH' && !r.isTorigami; }).length;
+    var medPlusCount = _recData.filter(function(r) { return r.betLabel === 'MED+' && !r.isTorigami; }).length;
+    var medCount = _recData.filter(function(r) { return r.betLabel === 'MED' && !r.isTorigami; }).length;
     var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
-    var totalInvest = highCount * 2000 + medCount * 400;
+    var totalInvest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
 
     var h = '';
     h += '<div class="rec-list-summary">';
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#dc2626">' + highCount + '</span><span class="rec-list-stat-label">HIGH</span></div>';
-    h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#ea580c">' + medCount + '</span><span class="rec-list-stat-label">MED</span></div>';
+    h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#ea580c">' + medPlusCount + '</span><span class="rec-list-stat-label">MED+</span></div>';
+    h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#d97706">' + medCount + '</span><span class="rec-list-stat-label">MED</span></div>';
     if (tgCount > 0) h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#94a3b8">' + tgCount + '</span><span class="rec-list-stat-label">見送り</span></div>';
-    h += '<div class="rec-list-stat"><span class="rec-list-stat-value">' + totalInvest.toLocaleString() + '円</span><span class="rec-list-stat-label">投資合計</span></div>';
+    h += '<div class="rec-list-stat"><span class="rec-list-stat-value">' + totalInvest.toLocaleString() + '円</span><span class="rec-list-stat-label">2連単投資</span></div>';
     h += '</div>';
 
     // ソート切替ボタン + オッズ更新ボタン
@@ -1401,11 +1407,13 @@ body {
     function renderCard(r) {
       var expired = r.startTime && r.startTime <= nowHHMM;
       var dimmed = expired || r.isTorigami;
+      var bc = r.betCat;
+      var tc = r.triCat;
       var lvlCls = r.isHigh ? "rec-high" : "rec-med";
-      var lvlLabel = r.isTorigami ? "\u898B\u9001\u308A" : (r.isHigh ? "HIGH" : "MED");
-      var lvlBg = dimmed ? "#94a3b8" : (r.isHigh ? "#dc2626" : "#ea580c");
-      var betAmount = r.isHigh ? "500\u5186\u00d74" : "100\u5186\u00d74";
-      var betTotal = r.isHigh ? "2,000\u5186" : "400\u5186";
+      var lvlLabel = r.isTorigami ? "\u898B\u9001\u308A" : bc.label;
+      var lvlBg = dimmed ? "#94a3b8" : bc.color;
+      var betAmount = bc.unit + "\u5186\u00d74";
+      var betTotal = (bc.unit * 4).toLocaleString() + "\u5186";
       var honmei = r.top5[0];
       var timeStr = r.startTime ? '<span style="color:' + (dimmed ? '#94a3b8' : 'var(--muted)') + ';font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
 
@@ -1416,7 +1424,7 @@ body {
       if (expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:500">締切</span>';
       if (r.isTorigami && !expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:700">トリガミ見送り</span>';
       c += '</span>';
-      c += '<span class="rec-full-score" style="color:' + (dimmed ? '#94a3b8' : (r.isHigh ? '#dc2626' : '#ea580c')) + '">' + r.gap.toFixed(2) + '</span>';
+      c += '<span class="rec-full-score" style="color:' + (dimmed ? '#94a3b8' : bc.color) + '">' + r.gap.toFixed(2) + '</span>';
       c += '<span class="rec-full-level" style="background:' + lvlBg + '">' + lvlLabel + '</span>';
       c += '</div>';
       c += '<div class="rec-full-riders">';
@@ -1439,8 +1447,10 @@ body {
       if (r.isTorigami) {
         c += '<span class="rec-full-bet-label" style="color:#94a3b8">max odds < 4.0x \u2192 \u8CB7\u308F\u306A\u3044</span>';
       } else {
-        c += '<span class="rec-full-bet-label">2\u9023\u5358\u25CE1\u7740\u56FA\u5B9A4\u70B9:</span>';
-        c += '<span class="rec-full-bet-amount" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + betAmount + ' = ' + betTotal + '</span>';
+        c += '<span class="rec-full-bet-label">2\u9023\u5358: ' + betAmount + ' = ' + betTotal + '</span>';
+        if (tc.unit > 0) {
+          c += '<span class="rec-full-bet-label" style="margin-left:8px;color:' + (expired ? '#94a3b8' : tc.color) + '">3\u9023\u5358: ' + tc.unit + '\u5186\u00d76 = ' + (tc.unit * 6).toLocaleString() + '\u5186</span>';
+        }
       }
       if (r.maxOdds != null && !r.isTorigami) c += '<span style="font-size:10px;color:var(--muted);margin-left:6px">max ' + r.maxOdds.toFixed(1) + 'x</span>';
       c += '</div>';
@@ -1458,16 +1468,21 @@ body {
       });
       for (var i = 0; i < sorted.length; i++) h += renderCard(sorted[i]);
     } else {
-      // 信頼度順: HIGH → MED → 見送り のグループ表示
+      // 信頼度順: HIGH → MED+ → MED → 見送り のグループ表示
       var highRaces = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; });
-      var medRaces = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; });
+      var medPlusRaces = _recData.filter(function(r) { return r.isMedPlus && !r.isTorigami; });
+      var medRaces = _recData.filter(function(r) { return !r.isHigh && !r.isMedPlus && !r.isTorigami; });
       var tgRaces = _recData.filter(function(r) { return r.isTorigami; });
       if (highRaces.length > 0) {
-        h += '<div class="rec-list-group-label">HIGH\uFF08\u4FE1\u983C\u5EA6 \u2265 1.10\uFF09\u2014 \u5404500\u5186\u00d74\u70B9</div>';
+        h += '<div class="rec-list-group-label">HIGH\uFF08\u4FE1\u983C\u5EA6 \u2265 1.00\uFF09\u2014 2\u9023\u5358500\u5186\u00d74 + 3\u9023\u5358</div>';
         for (var i = 0; i < highRaces.length; i++) h += renderCard(highRaces[i]);
       }
+      if (medPlusRaces.length > 0) {
+        h += '<div class="rec-list-group-label">MED+\uFF08\u4FE1\u983C\u5EA6 0.80\u301C1.00\uFF09\u2014 2\u9023\u5358200\u5186\u00d74</div>';
+        for (var i = 0; i < medPlusRaces.length; i++) h += renderCard(medPlusRaces[i]);
+      }
       if (medRaces.length > 0) {
-        h += '<div class="rec-list-group-label">MED\uFF08\u4FE1\u983C\u5EA6 0.50\u301C0.80\uFF09\u2014 \u5404100\u5186\u00d74\u70B9</div>';
+        h += '<div class="rec-list-group-label">MED\uFF08\u4FE1\u983C\u5EA6 0.50\u301C0.80\uFF09\u2014 2\u9023\u5358100\u5186\u00d74</div>';
         for (var i = 0; i < medRaces.length; i++) h += renderCard(medRaces[i]);
       }
       if (tgRaces.length > 0) {
@@ -1545,11 +1560,11 @@ body {
 
   function confBadge(conf) {
     if (conf == null) return '';
-    var cls;
-    if (conf >= 1.10) cls = 'race-conf-high';
-    else if (conf >= 0.50 && conf < 0.80) cls = 'race-conf-mid';
-    else cls = 'race-conf-low';
-    var label = conf >= 1.10 ? 'HIGH' : (conf >= 0.50 && conf < 0.80) ? 'MED' : 'LOW';
+    var cls, label;
+    if (conf >= 1.00) { cls = 'race-conf-high'; label = 'HIGH'; }
+    else if (conf >= 0.80) { cls = 'race-conf-mid'; label = 'MED+'; }
+    else if (conf >= 0.50) { cls = 'race-conf-mid'; label = 'MED'; }
+    else { cls = 'race-conf-low'; label = 'LOW'; }
     return '<span class="race-conf ' + cls + '">' + label + ' ' + conf.toFixed(2) + '</span>';
   }
 
@@ -1618,9 +1633,10 @@ body {
       for (const [venue, vr] of venueEntries) {
         // 場ごとの信頼度集計
         const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
-        const highCount = confs.filter(c => c >= 1.10).length;
+        const highCount = confs.filter(c => c >= 1.00).length;
+        const medPlusCount = confs.filter(c => c >= 0.80 && c < 1.00).length;
         const midCount = confs.filter(c => c >= 0.50 && c < 0.80).length;
-        const hasRec = highCount > 0;
+        const hasRec = highCount > 0 || medPlusCount > 0;
 
         // 時間帯
         const times = vr.map(r => r.start_time).filter(Boolean);
@@ -1648,6 +1664,7 @@ body {
         if (confs.length > 0) {
           h += '<div class="venue-conf-summary">';
           if (highCount > 0) h += '<span class="venue-conf-tag venue-conf-high">HIGH ' + highCount + 'R</span>';
+          if (medPlusCount > 0) h += '<span class="venue-conf-tag venue-conf-mid">MED+ ' + medPlusCount + 'R</span>';
           if (midCount > 0) h += '<span class="venue-conf-tag venue-conf-mid">MED ' + midCount + 'R</span>';
           h += '</div>';
         }
@@ -1806,38 +1823,49 @@ body {
     }
   }
 
+  /* ── 賭けカテゴリ判定 ── */
+  function getBetCategory(conf, isF2) {
+    if (isF2) return { lvl: "low", label: "SKIP", rec: "見送り（F2）", color: "#94a3b8", unit: 0 };
+    if (conf >= 1.00) return { lvl: "high", label: "HIGH", rec: "500円×4点=2,000円", color: "#dc2626", unit: 500 };
+    if (conf >= 0.80) return { lvl: "mid", label: "MED+", rec: "200円×4点=800円", color: "#ea580c", unit: 200 };
+    if (conf >= 0.50) return { lvl: "mid", label: "MED", rec: "100円×4点=400円", color: "#d97706", unit: 100 };
+    return { lvl: "low", label: "LOW", rec: "見送り", color: "#94a3b8", unit: 0 };
+  }
+  function getTrifectaCategory(conf, isF2) {
+    if (isF2) return { label: "SKIP", rec: "見送り（F2）", color: "#94a3b8", unit: 0 };
+    if (conf >= 2.00) return { label: "S3-HIGH", rec: "500円×6点=3,000円", color: "#7c3aed", unit: 500 };
+    if (conf >= 1.50) return { label: "S3-MED+", rec: "200円×6点=1,200円", color: "#9333ea", unit: 200 };
+    if (conf >= 1.00) return { label: "S3-MED", rec: "100円×6点=600円", color: "#a855f7", unit: 100 };
+    return { label: "LOW", rec: "見送り", color: "#94a3b8", unit: 0 };
+  }
+
   /* ── 信頼度（結果あり用） ── */
   function buildHonmeiBox(data) {
     const sorted = data.slice().sort((a, b) => a.predicted_rank - b.predicted_rank);
     if (sorted.length < 2) return '';
     const gap12 = (sorted[0].predicted_score || 0) - (sorted[1].predicted_score || 0);
     const isF2 = (sorted[0].grade || '') === 'F2';
-    let lvl, lvlLabel, betRec, betColor, barPct;
-    if (isF2) {
-      lvl = "low"; lvlLabel = "SKIP"; betRec = "見送り（F2）";
-      betColor = "#94a3b8"; barPct = 0;
-    } else if (gap12 >= 1.10) {
-      lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
-      betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else if (gap12 >= 0.50 && gap12 < 0.80) {
-      lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
-      betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else {
-      lvl = "low"; lvlLabel = "LOW"; betRec = "見送り";
-      betColor = "#94a3b8"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    }
+    const bet = getBetCategory(gap12, isF2);
+    const tri = getTrifectaCategory(gap12, isF2);
+    const barPct = isF2 ? 0 : Math.min(gap12 / 2.5 * 100, 100);
     let h = '<div class="bet-section">';
     h += '<div class="honmei-box">';
     h += '<div class="honmei-row">';
     h += '<span class="honmei-label">信頼度</span>';
-    h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
-    h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
+    h += '<span class="honmei-value" style="color:' + bet.color + '">' + gap12.toFixed(2) + '</span>';
+    h += '<span class="honmei-level honmei-' + bet.lvl + '">' + bet.label + '</span>';
     h += '</div>';
     h += '<div class="honmei-bet">';
-    h += '<span class="honmei-bet-label">2連単◎→○▲△△ 推奨:</span>';
-    h += '<span class="honmei-bet-amount" style="color:' + betColor + '">' + betRec + '</span>';
+    h += '<span class="honmei-bet-label">2連単◎→○▲△△:</span>';
+    h += '<span class="honmei-bet-amount" style="color:' + bet.color + '">' + bet.rec + '</span>';
     h += '</div>';
-    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + betColor + '"></div></div>';
+    if (tri.unit > 0) {
+      h += '<div class="honmei-bet">';
+      h += '<span class="honmei-bet-label">3連単◎-○▲△-○▲△:</span>';
+      h += '<span class="honmei-bet-amount" style="color:' + tri.color + '">' + tri.rec + '</span>';
+      h += '</div>';
+    }
+    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + bet.color + '"></div></div>';
     h += '</div></div>';
     return h;
   }
@@ -1851,20 +1879,9 @@ body {
 
     const gap12 = top[0].score - top[1].score;
     const isF2 = (data[0] && (data[0].grade || '')) === 'F2';
-    let lvl, lvlLabel, betRec, betColor, barPct;
-    if (isF2) {
-      lvl = "low"; lvlLabel = "SKIP"; betRec = "見送り（F2）";
-      betColor = "#94a3b8"; barPct = 0;
-    } else if (gap12 >= 1.10) {
-      lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
-      betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else if (gap12 >= 0.50 && gap12 < 0.80) {
-      lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
-      betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else {
-      lvl = "low"; lvlLabel = "LOW"; betRec = "見送り";
-      betColor = "#94a3b8"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    }
+    const bet = getBetCategory(gap12, isF2);
+    const tri = getTrifectaCategory(gap12, isF2);
+    const barPct = isF2 ? 0 : Math.min(gap12 / 2.5 * 100, 100);
 
     let h = '<div class="bet-section">';
 
@@ -1872,46 +1889,50 @@ body {
     h += '<div class="honmei-box">';
     h += '<div class="honmei-row">';
     h += '<span class="honmei-label">信頼度</span>';
-    h += '<span class="honmei-value" style="color:' + betColor + '">' + gap12.toFixed(2) + '</span>';
-    h += '<span class="honmei-level honmei-' + lvl + '">' + lvlLabel + '</span>';
+    h += '<span class="honmei-value" style="color:' + bet.color + '">' + gap12.toFixed(2) + '</span>';
+    h += '<span class="honmei-level honmei-' + bet.lvl + '">' + bet.label + '</span>';
     h += '</div>';
     h += '<div class="honmei-bet">';
-    h += '<span class="honmei-bet-label">2連単◎→○▲△△ 推奨:</span>';
-    h += '<span class="honmei-bet-amount" style="color:' + betColor + '">' + betRec + '</span>';
+    h += '<span class="honmei-bet-label">2連単◎→○▲△△:</span>';
+    h += '<span class="honmei-bet-amount" style="color:' + bet.color + '">' + bet.rec + '</span>';
     h += '</div>';
-    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + betColor + '"></div></div>';
+    if (tri.unit > 0) {
+      h += '<div class="honmei-bet">';
+      h += '<span class="honmei-bet-label">3連単◎-○▲△-○▲△:</span>';
+      h += '<span class="honmei-bet-amount" style="color:' + tri.color + '">' + tri.rec + '</span>';
+      h += '</div>';
+    }
+    h += '<div class="honmei-bar"><div class="honmei-bar-fill" style="width:' + barPct + '%;background:' + bet.color + '"></div></div>';
     h += '</div>';
 
     h += '<div class="bet-header"><span class="bet-title">おすすめ買い目</span></div>';
 
-    h += '<div class="bet-group-label">2連単（◎1着固定→○▲△△）</div>';
+    h += '<div class="bet-group-label">2連単（◎1着固定→○▲△△ 4点）</div>';
     const ex = [
       { a: top[0], b: top[1], tag: "本命", cls: "tag-honmei" },
       { a: top[0], b: top[2], tag: "対抗", cls: "tag-honmei" },
       { a: top[0], b: top[3], tag: "穴", cls: "tag-chuuana" },
       { a: top[0], b: top[4], tag: "穴", cls: "tag-chuuana" },
     ].filter(e => e.a && e.b);
-    if (lvl === "low") {
-      ex.push({ a: top[1], b: top[0], tag: "中穴", cls: "tag-chuuana" });
-      if (top[2]) ex.push({ a: top[1], b: top[2], tag: "中穴", cls: "tag-chuuana" });
-    }
     for (const e of ex) {
       h += '<div class="bet-row"><span class="bet-combo">' + e.a.bike + ' → ' + e.b.bike + '</span>';
       h += '<span class="bet-names">' + e.a.name + '→' + e.b.name + '</span>';
       h += '<span class="bet-tag ' + e.cls + '">' + e.tag + '</span></div>';
     }
 
-    if (top.length >= 3) {
-      h += '<div class="bet-group-label">3連単（1着-2着-3着）</div>';
-      const tr = [
-        { a: top[0], b: top[1], c: top[2], tag: "本命", cls: "tag-honmei" },
-        { a: top[0], b: top[2], c: top[1], tag: "対抗", cls: "tag-honmei" },
-      ];
-      if (lvl !== "high" && top[3]) {
-        tr.push({ a: top[0], b: top[1], c: top[3], tag: "穴", cls: "tag-chuuana" });
-        tr.push({ a: top[1], b: top[0], c: top[2], tag: "穴", cls: "tag-chuuana" });
+    if (top.length >= 4) {
+      h += '<div class="bet-group-label">3連単（◎-○▲△-○▲△ 6点フォーメーション）</div>';
+      const p = [top[1], top[2], top[3]].filter(Boolean);
+      const tr = [];
+      for (const p2 of p) {
+        for (const p3 of p) {
+          if (p2.bike !== p3.bike) {
+            var tag = (p2 === top[1] && p3 === top[2]) ? "本命" : (p2 === top[1] || p3 === top[1]) ? "対抗" : "穴";
+            var cls = tag === "本命" ? "tag-honmei" : tag === "対抗" ? "tag-honmei" : "tag-chuuana";
+            tr.push({ a: top[0], b: p2, c: p3, tag: tag, cls: cls });
+          }
+        }
       }
-      if (lvl === "low" && top[3]) tr.push({ a: top[0], b: top[2], c: top[3], tag: "大穴", cls: "tag-ouana" });
       for (const t of tr) {
         h += '<div class="bet-row"><span class="bet-combo">' + t.a.bike + ' → ' + t.b.bike + ' → ' + t.c.bike + '</span>';
         h += '<span class="bet-names">' + t.a.name + '→' + t.b.name + '→' + t.c.name + '</span>';
@@ -2038,12 +2059,9 @@ body {
       top3Total += Math.min(3, actualTop3Set.size);
 
       var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
-      var isHighConf = conf >= 1.10;
-      var isMed = conf >= 0.50 && conf < 0.80;
-
-      // F2は賭け対象外 + 0.80-1.10デッドゾーンスキップ
       var isF2 = rows[0].grade === 'F2';
-      var betUnit = isF2 ? 0 : (isHighConf ? 500 : isMed ? 100 : 0);
+      var betInfo = getBetCategory(conf, isF2);
+      var betUnit = betInfo.unit;
       var raceBet = betUnit * 4;
       var raceReturn = 0;
       var nisyatanPayout = payoutMap[raceId] || 0;
@@ -2062,9 +2080,10 @@ body {
       totalReturn += raceReturn;
       raceCards.push({
         raceId: raceId, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
-        grade: rows[0].grade, conf: conf, isHighConf: isHighConf, isMed: isMed,
+        grade: rows[0].grade, conf: conf, isHighConf: conf >= 1.00, isMed: conf >= 0.50 && conf < 1.00,
         isTop1Hit: isTop1Hit, overlap: overlap, predTop3: predTop3,
-        bet: raceBet, ret: raceReturn, pnl: raceReturn - raceBet, payout: nisyatanPayout
+        bet: raceBet, ret: raceReturn, pnl: raceReturn - raceBet, payout: nisyatanPayout,
+        isTorigami: false
       });
     }
 
@@ -2198,14 +2217,18 @@ body {
         return;
       }
 
-      // 配当データ取得
+      // 配当データ取得（2連単+3連単）
       var raceIds = []; var seenR = {};
       for (var r of allData) { if (!seenR[r.race_id]) { seenR[r.race_id] = 1; raceIds.push(r.race_id); } }
       var payoutMap = {};
+      var sanrentanMap = {};
       for (var i = 0; i < raceIds.length; i += 80) {
         var chunk = raceIds.slice(i, i + 80);
-        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_payout").in("race_id", chunk);
-        if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_combo, nisyatan_payout, sanrentan_combo, sanrentan_payout").in("race_id", chunk);
+        if (payouts) for (var p of payouts) {
+          payoutMap[p.race_id] = p.nisyatan_payout;
+          if (p.sanrentan_payout) sanrentanMap[p.race_id] = { combo: p.sanrentan_combo, payout: p.sanrentan_payout };
+        }
       }
 
       // レース別にグループ化
@@ -2215,10 +2238,11 @@ body {
         byRace[r.race_id].rows.push(r);
       }
 
-      // 日別P&L計算
+      // 日別P&L計算（2連単+3連単）
       var dailyPnl = {};
-      var totalBet = 0, totalReturn = 0, totalRaces = 0, top1Hits = 0, betRaces = 0;
-      var nisyatanHits = 0;
+      var n2Bet = 0, n2Return = 0, s3Bet = 0, s3Return = 0;
+      var totalRaces = 0, top1Hits = 0, n2Races = 0, s3Races = 0;
+      var nisyatanHits = 0, sanrentanHits = 0;
 
       for (var raceId of Object.keys(byRace)) {
         var race = byRace[raceId];
@@ -2230,62 +2254,94 @@ body {
         totalRaces++;
         var sorted = rows.slice().sort(function(a, b) { return a.predicted_rank - b.predicted_rank; });
         var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
-        // F2は賭け対象外（バックテストで回収率64.5%）
         var raceGrade = rows[0].race_grade || rows[0].grade || '';
         var isF2 = raceGrade === 'F2';
-        var betUnit = isF2 ? 0 : (conf >= 1.10 ? 500 : (conf >= 0.50 && conf < 0.80) ? 100 : 0);
-        var raceBet = betUnit * 4;
-        var raceReturn = 0;
+        var betInfo = getBetCategory(conf, isF2);
+        var triInfo = getTrifectaCategory(conf, isF2);
 
         var isTop1Hit = sorted[0] && sorted[0].finish_position === 1;
         if (isTop1Hit) top1Hits++;
 
-        if (betUnit > 0) {
-          betRaces++;
+        var raceN2Bet = 0, raceN2Ret = 0, raceS3Bet = 0, raceS3Ret = 0;
+
+        // 2連単
+        if (betInfo.unit > 0) {
+          n2Races++;
+          raceN2Bet = betInfo.unit * 4;
           var nisyatanPayout = payoutMap[raceId] || 0;
           if (isTop1Hit && nisyatanPayout > 0) {
             var actual2nd = sorted.find(function(r) { return r.finish_position === 2; });
             if (actual2nd) {
               var targets = sorted.slice(1).map(function(r) { return r.bike_number; });
               if (targets.indexOf(actual2nd.bike_number) >= 0) {
-                raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+                raceN2Ret = Math.floor(nisyatanPayout * betInfo.unit / 100);
                 nisyatanHits++;
               }
             }
           }
         }
 
-        totalBet += raceBet;
-        totalReturn += raceReturn;
-        if (!dailyPnl[date]) dailyPnl[date] = { bet: 0, ret: 0, races: 0, hits: 0 };
-        dailyPnl[date].bet += raceBet;
-        dailyPnl[date].ret += raceReturn;
+        // 3連単
+        if (triInfo.unit > 0 && sorted.length >= 4) {
+          s3Races++;
+          var partners = sorted.slice(1, 4).map(function(r) { return r.bike_number; });
+          var triTickets = [];
+          var honmeiBike = sorted[0].bike_number;
+          for (var p2 of partners) {
+            for (var p3 of partners) {
+              if (p2 !== p3) triTickets.push(honmeiBike + ">" + p2 + ">" + p3);
+            }
+          }
+          raceS3Bet = triInfo.unit * triTickets.length;
+          var sInfo = sanrentanMap[raceId];
+          if (sInfo && sInfo.combo && triTickets.indexOf(sInfo.combo) >= 0) {
+            raceS3Ret = Math.floor(sInfo.payout * triInfo.unit / 100);
+            sanrentanHits++;
+          }
+        }
+
+        n2Bet += raceN2Bet; n2Return += raceN2Ret;
+        s3Bet += raceS3Bet; s3Return += raceS3Ret;
+        if (!dailyPnl[date]) dailyPnl[date] = { n2Bet: 0, n2Ret: 0, s3Bet: 0, s3Ret: 0, races: 0, hits: 0 };
+        dailyPnl[date].n2Bet += raceN2Bet;
+        dailyPnl[date].n2Ret += raceN2Ret;
+        dailyPnl[date].s3Bet += raceS3Bet;
+        dailyPnl[date].s3Ret += raceS3Ret;
         dailyPnl[date].races++;
         if (isTop1Hit) dailyPnl[date].hits++;
       }
 
-      // チャートデータ作成
+      // チャートデータ作成（3ライン: 2連単/3連単/合計）
       var sortedDates = Object.keys(dailyPnl).sort();
       var labels = [];
-      var cumData = [];
-      var dailyDataArr = [];
-      var cum = 0;
+      var cumN2 = [], cumS3 = [], cumCombo = [];
+      var cn2 = 0, cs3 = 0;
 
       for (var sd of sortedDates) {
         var dp = dailyPnl[sd];
-        var dayPnl = dp.ret - dp.bet;
-        cum += dayPnl;
+        cn2 += dp.n2Ret - dp.n2Bet;
+        cs3 += dp.s3Ret - dp.s3Bet;
         var dd = new Date(sd + "T00:00:00");
         labels.push((dd.getMonth()+1) + "/" + dd.getDate());
-        cumData.push(cum);
-        dailyDataArr.push(dayPnl);
+        cumN2.push(cn2);
+        cumS3.push(cs3);
+        cumCombo.push(cn2 + cs3);
       }
 
+      var totalBet = n2Bet + s3Bet;
+      var totalReturn = n2Return + s3Return;
       var totalPnl = totalReturn - totalBet;
       var roi = totalBet > 0 ? ((totalReturn / totalBet) * 100).toFixed(1) : "0.0";
+      var n2Roi = n2Bet > 0 ? ((n2Return / n2Bet) * 100).toFixed(1) : "0.0";
+      var s3Roi = s3Bet > 0 ? ((s3Return / s3Bet) * 100).toFixed(1) : "0.0";
       var top1Pct = totalRaces > 0 ? (top1Hits / totalRaces * 100).toFixed(1) : "0.0";
-      var hitRate = betRaces > 0 ? (nisyatanHits / betRaces * 100).toFixed(1) : "0.0";
+      var n2HitRate = n2Races > 0 ? (nisyatanHits / n2Races * 100).toFixed(1) : "0.0";
+      var s3HitRate = s3Races > 0 ? (sanrentanHits / s3Races * 100).toFixed(1) : "0.0";
       var pnlColor = totalPnl >= 0 ? "#16a34a" : "#dc2626";
+      var n2Pnl = n2Return - n2Bet;
+      var s3Pnl = s3Return - s3Bet;
+      var n2Color = n2Pnl >= 0 ? "#16a34a" : "#dc2626";
+      var s3Color = s3Pnl >= 0 ? "#16a34a" : "#dc2626";
 
       // HTML構築
       var h = '<div class="section-header" style="margin-bottom:12px">';
@@ -2295,12 +2351,14 @@ body {
       h += '</div>';
 
       h += '<div class="pnl-stats">';
-      h += '<div class="pnl-stat-card"><span class="pnl-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="pnl-stat-label">累積損益</span></div>';
-      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + totalBet.toLocaleString() + '円</span><span class="pnl-stat-label">総投資額</span></div>';
-      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + roi + '%</span><span class="pnl-stat-label">回収率</span></div>';
-      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + hitRate + '%</span><span class="pnl-stat-label">2連単的中率 (' + nisyatanHits + '/' + betRaces + ')</span></div>';
-      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + sortedDates.length + '日</span><span class="pnl-stat-label">開催日数</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="pnl-stat-label">合計損益</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + roi + '%</span><span class="pnl-stat-label">合計ROI</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value" style="color:' + n2Color + '">' + (n2Pnl >= 0 ? '+' : '') + n2Pnl.toLocaleString() + '円</span><span class="pnl-stat-label">2連単 (ROI ' + n2Roi + '%)</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value" style="color:' + s3Color + '">' + (s3Pnl >= 0 ? '+' : '') + s3Pnl.toLocaleString() + '円</span><span class="pnl-stat-label">3連単 (ROI ' + s3Roi + '%)</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + n2HitRate + '%</span><span class="pnl-stat-label">2連単的中 (' + nisyatanHits + '/' + n2Races + ')</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + s3HitRate + '%</span><span class="pnl-stat-label">3連単的中 (' + sanrentanHits + '/' + s3Races + ')</span></div>';
       h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + top1Pct + '%</span><span class="pnl-stat-label">◎的中率 (' + top1Hits + '/' + totalRaces + ')</span></div>';
+      h += '<div class="pnl-stat-card"><span class="pnl-stat-value">' + sortedDates.length + '日</span><span class="pnl-stat-label">開催日数</span></div>';
       h += '</div>';
 
       h += '<div class="pnl-chart-wrap"><canvas id="pnlChart"></canvas></div>';
@@ -2311,53 +2369,69 @@ body {
       for (var i = sortedDates.length - 1; i >= 0; i--) {
         var d = sortedDates[i];
         var dp = dailyPnl[d];
-        var dayPnl = dp.ret - dp.bet;
+        var dayN2 = dp.n2Ret - dp.n2Bet;
+        var dayS3 = dp.s3Ret - dp.s3Bet;
+        var dayPnl = dayN2 + dayS3;
         var dayColor = dayPnl >= 0 ? "#16a34a" : "#dc2626";
         var hitPct = dp.races > 0 ? (dp.hits / dp.races * 100).toFixed(0) : "0";
         h += '<div class="pnl-daily-row">';
         h += '<span class="pnl-daily-date">' + formatDate(d) + '</span>';
         h += '<span class="pnl-daily-val" style="color:' + dayColor + '">' + (dayPnl >= 0 ? '+' : '') + dayPnl.toLocaleString() + '円</span>';
-        h += '<span class="pnl-daily-sub">投資' + dp.bet.toLocaleString() + '円 / ◎' + hitPct + '%</span>';
+        h += '<span class="pnl-daily-sub">2連単' + (dayN2 >= 0 ? '+' : '') + dayN2.toLocaleString() + ' / 3連単' + (dayS3 >= 0 ? '+' : '') + dayS3.toLocaleString() + '</span>';
         h += '</div>';
       }
       h += '</div>';
 
       el.innerHTML = h;
 
-      // Chart.js描画
+      // Chart.js描画（3ライン: 2連単/3連単/合計）
       if (_pnlChart) { _pnlChart.destroy(); _pnlChart = null; }
       var ctx = document.getElementById("pnlChart").getContext("2d");
       _pnlChart = new Chart(ctx, {
         type: "line",
         data: {
           labels: labels,
-          datasets: [{
-            label: "累積損益",
-            data: cumData,
-            borderColor: "#2563eb",
-            backgroundColor: "rgba(37,99,235,0.08)",
-            borderWidth: 2,
-            pointRadius: 2.5,
-            pointBackgroundColor: "#2563eb",
-            fill: true,
-            tension: 0.2,
-          }]
+          datasets: [
+            {
+              label: "2連単+3連単",
+              data: cumCombo,
+              borderColor: "#16a34a",
+              backgroundColor: "rgba(22,163,74,0.06)",
+              borderWidth: 2.5,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.2,
+            },
+            {
+              label: "2連単",
+              data: cumN2,
+              borderColor: "#2563eb",
+              borderWidth: 1.8,
+              pointRadius: 0,
+              fill: false,
+              tension: 0.2,
+            },
+            {
+              label: "3連単",
+              data: cumS3,
+              borderColor: "#f59e0b",
+              borderWidth: 1.8,
+              pointRadius: 0,
+              fill: false,
+              tension: 0.2,
+            }
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: true,
           interaction: { intersect: false, mode: "index" },
           plugins: {
-            legend: { display: false },
+            legend: { display: true, position: "top", labels: { boxWidth: 12, font: { size: 11 } } },
             tooltip: {
               callbacks: {
-                title: function(items) { return items[0].label; },
                 label: function(ctx) {
-                  return "累積: " + (ctx.raw >= 0 ? "+" : "") + ctx.raw.toLocaleString() + "円";
-                },
-                afterLabel: function(ctx) {
-                  var idx = ctx.dataIndex;
-                  return "日次: " + (dailyDataArr[idx] >= 0 ? "+" : "") + dailyDataArr[idx].toLocaleString() + "円";
+                  return ctx.dataset.label + ": " + (ctx.raw >= 0 ? "+" : "") + ctx.raw.toLocaleString() + "円";
                 }
               }
             }
@@ -2369,6 +2443,7 @@ body {
             y: {
               ticks: {
                 callback: function(v) {
+                  if (Math.abs(v) >= 10000) return (v >= 0 ? "+" : "") + (v / 10000).toFixed(0) + "万";
                   if (Math.abs(v) >= 1000) return (v >= 0 ? "+" : "") + (v / 1000).toFixed(0) + "k";
                   return (v >= 0 ? "+" : "") + v;
                 },
