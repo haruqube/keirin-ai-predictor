@@ -5,8 +5,6 @@
 - [ ] 結果の自動取得・精度レポート自動生成
 - [ ] Supabase同期のAPI権限修正（現在service_key経由のみ）
 
-## 進行中
-
 ## 完了
 - [x] プロジェクト構造作成
 - [x] DBスキーマ設計（races, riders, race_results, entries, predictions）
@@ -37,6 +35,15 @@
   - 旧方式 min(top3)-max(残): r=0.055, H-L差+6.8%（無相関）
   - 新方式 1位vs3位差: r=0.365, H-L差+35.4%
   - 高信頼(≥2.3): Top1的中率86.7%, Top1が3着以内97.9%
+- [x] Optunaハイパーパラメータ最適化（100trial、NDCG@3改善）
+- [x] 特徴量拡張（38→44: 天候・年齢・オッズ・正規化タイム等）
+- [x] コードリファクタリング（重複定数・ロジック集約、一時スクリプト整理）
+- [x] 3連単戦略の導入
+  - スクレイパーに3連単配当パース追加
+  - DBに sanrentan_combo/payout/popularity カラム追加
+  - 独立した信頼度閾値: S3-HIGH(≥2.00), S3-MED+(≥1.50), S3-MED(≥1.00)
+  - 全パイプライン統合（予測・日次評価・記事生成・バックテスト）
+  - バックテスト結果: 2連単ROI 170% + 3連単ROI 315% = 合計ROI 219%
 
 ## メモ
 - データソース: keirin.netkeiba.com (netkeirin)
@@ -44,7 +51,9 @@
 - 全43場対応（VELODROME_CODES、2025年3月検証済み）
 - ライン補正: 3人ライン番手+0.30が最有利、最強ライン所属+0.20
 - 特徴量重要度Top3: rider_class_num, rider_win_rate_all, rider_place_rate_all
-- モデル精度（6ヶ月2,799R検証）: Top1=47.8%, Top1in3=78.8%, Top3avg=1.90/3
+- モデル精度: Top1=50.9%, NDCG@3=0.824（Optuna最適化後）
 - 信頼度指標: conf_gap13（1位vs3位スコア差）、閾値 高≥2.3, 中≥0.85
+- 賭け戦略: 2連単(≥0.50)×4点 + 3連単(≥1.00)×6点フォーメーション
+- 累積収支（2024-2026バックテスト）: 2連単+313万, 3連単+456万, 合計+769万
 - Supabase project: yzfoauumlocqdgxojwed
 - GitHub Pages: https://haruqube.github.io/keirin-ai-predictor/
