@@ -1340,7 +1340,10 @@ body {
       var medPlusCount = _recData.filter(function(r) { return r.betLabel === 'MED+' && !r.isTorigami; }).length;
       var medCount = _recData.filter(function(r) { return r.betLabel === 'MED' && !r.isTorigami; }).length;
       var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
-      var totalInvest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
+      var n2Invest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
+      var s3Invest = 0;
+      _recData.forEach(function(r) { if (!r.isTorigami && r.triCat.unit > 0) s3Invest += r.triCat.unit * 6; });
+      var totalInvest = n2Invest + s3Invest;
 
       var h = '<div class="rec-banner" id="recBanner">';
       h += '<div class="rec-banner-title">&#9733; 本日のおすすめ</div>';
@@ -1350,7 +1353,7 @@ body {
       if (medCount > 0) h += '<span class="rec-banner-count">MED ' + medCount + '件</span>';
       if (tgCount > 0) h += '<span class="rec-banner-count" style="color:#94a3b8">見送り ' + tgCount + '件</span>';
       h += '</div>';
-      h += '<div class="rec-banner-total">投資合計: ' + totalInvest.toLocaleString() + '円（' + (highCount + medCount) + 'レース）</div>';
+      h += '<div class="rec-banner-total">2連単 ' + n2Invest.toLocaleString() + '円 + 3連単 ' + s3Invest.toLocaleString() + '円 = 合計 ' + totalInvest.toLocaleString() + '円</div>';
       h += '<div class="rec-banner-arrow">すべて見る &#8250;</div>';
       h += '</div>';
 
@@ -1380,7 +1383,9 @@ body {
     var medPlusCount = _recData.filter(function(r) { return r.betLabel === 'MED+' && !r.isTorigami; }).length;
     var medCount = _recData.filter(function(r) { return r.betLabel === 'MED' && !r.isTorigami; }).length;
     var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
-    var totalInvest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
+    var n2Invest = highCount * 2000 + medPlusCount * 800 + medCount * 400;
+    var s3Invest = 0;
+    _recData.forEach(function(r) { if (!r.isTorigami && r.triCat.unit > 0) s3Invest += r.triCat.unit * 6; });
 
     var h = '';
     h += '<div class="rec-list-summary">';
@@ -1388,7 +1393,11 @@ body {
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#ea580c">' + medPlusCount + '</span><span class="rec-list-stat-label">MED+</span></div>';
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#d97706">' + medCount + '</span><span class="rec-list-stat-label">MED</span></div>';
     if (tgCount > 0) h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#94a3b8">' + tgCount + '</span><span class="rec-list-stat-label">見送り</span></div>';
-    h += '<div class="rec-list-stat"><span class="rec-list-stat-value">' + totalInvest.toLocaleString() + '円</span><span class="rec-list-stat-label">2連単投資</span></div>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:8px;margin:0 16px 8px;font-size:11px;color:var(--muted)">';
+    h += '<span>2連単: ' + n2Invest.toLocaleString() + '円</span>';
+    h += '<span>3連単: ' + s3Invest.toLocaleString() + '円</span>';
+    h += '<span style="font-weight:600;color:var(--text)">合計: ' + (n2Invest + s3Invest).toLocaleString() + '円</span>';
     h += '</div>';
 
     // ソート切替ボタン + オッズ更新ボタン
@@ -2002,14 +2011,18 @@ body {
       }
       if (allData.length === 0) { el.innerHTML = ""; return; }
 
-      // 配当データ取得
+      // 配当データ取得（2連単+3連単）
       var raceIds = []; var seenR = {};
       for (var r of allData) { if (!seenR[r.race_id]) { seenR[r.race_id] = 1; raceIds.push(r.race_id); } }
       var payoutMap = {};
+      var sanrentanMap = {};
       for (var i = 0; i < raceIds.length; i += 80) {
         var chunk = raceIds.slice(i, i + 80);
-        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_payout").in("race_id", chunk);
-        if (payouts) for (var p of payouts) payoutMap[p.race_id] = p.nisyatan_payout;
+        var { data: payouts } = await sb.from("race_payouts").select("race_id, nisyatan_payout, sanrentan_combo, sanrentan_payout").in("race_id", chunk);
+        if (payouts) for (var p of payouts) {
+          payoutMap[p.race_id] = p.nisyatan_payout;
+          if (p.sanrentan_payout) sanrentanMap[p.race_id] = { combo: p.sanrentan_combo, payout: p.sanrentan_payout };
+        }
       }
 
       // 日付別にグループ化
@@ -2019,7 +2032,7 @@ body {
         byDate[r.race_date].push(r);
       }
 
-      _weeklyData = { dates: dates, byDate: byDate, payoutMap: payoutMap };
+      _weeklyData = { dates: dates, byDate: byDate, payoutMap: payoutMap, sanrentanMap: sanrentanMap };
       renderWeeklyResults(dates[0]);
     } catch (e) { console.error(e); el.innerHTML = ""; }
   }
@@ -2030,12 +2043,13 @@ body {
     var dates = _weeklyData.dates;
     var data = _weeklyData.byDate[selectedDate] || [];
     var payoutMap = _weeklyData.payoutMap;
+    var sanrentanMap = _weeklyData.sanrentanMap || {};
 
     var groups = {};
     for (var r of data) { if (!groups[r.race_id]) groups[r.race_id] = []; groups[r.race_id].push(r); }
 
     var totalRaces = 0, top1Hits = 0, top3Overlap = 0, top3Total = 0;
-    var totalBet = 0, totalReturn = 0;
+    var n2Bet = 0, n2Return = 0, s3Bet = 0, s3Return = 0;
     var raceCards = [];
 
     for (var raceId of Object.keys(groups).sort()) {
@@ -2061,35 +2075,59 @@ body {
       var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
       var isF2 = rows[0].grade === 'F2';
       var betInfo = getBetCategory(conf, isF2);
+      var triInfo = getTrifectaCategory(conf, isF2);
       var betUnit = betInfo.unit;
-      var raceBet = betUnit * 4;
-      var raceReturn = 0;
+      var raceN2Bet = betUnit * 4;
+      var raceN2Ret = 0;
+      var raceS3Bet = 0, raceS3Ret = 0;
       var nisyatanPayout = payoutMap[raceId] || 0;
 
+      // 2連単
       if (betUnit > 0 && isTop1Hit && nisyatanPayout > 0) {
         var actual2nd = rows.find(function(r) { return r.finish_position === 2; });
         if (actual2nd) {
           var targets = predTop5.slice(1).map(function(r) { return r.bike_number; });
           if (targets.indexOf(actual2nd.bike_number) >= 0) {
-            raceReturn = Math.floor(nisyatanPayout * betUnit / 100);
+            raceN2Ret = Math.floor(nisyatanPayout * betUnit / 100);
           }
         }
       }
 
-      totalBet += raceBet;
-      totalReturn += raceReturn;
+      // 3連単
+      if (triInfo.unit > 0 && sorted.length >= 4) {
+        var honmeiBike = sorted[0].bike_number;
+        var partners = sorted.slice(1, 4).map(function(r) { return r.bike_number; });
+        var triTickets = [];
+        for (var p2 of partners) { for (var p3 of partners) { if (p2 !== p3) triTickets.push(honmeiBike + ">" + p2 + ">" + p3); } }
+        raceS3Bet = triInfo.unit * triTickets.length;
+        var sInfo = sanrentanMap[raceId];
+        if (sInfo && sInfo.combo && triTickets.indexOf(sInfo.combo) >= 0) {
+          raceS3Ret = Math.floor(sInfo.payout * triInfo.unit / 100);
+        }
+      }
+
+      n2Bet += raceN2Bet; n2Return += raceN2Ret;
+      s3Bet += raceS3Bet; s3Return += raceS3Ret;
+      var racePnl = (raceN2Ret - raceN2Bet) + (raceS3Ret - raceS3Bet);
       raceCards.push({
         raceId: raceId, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
         grade: rows[0].grade, conf: conf, isHighConf: conf >= 1.00, isMed: conf >= 0.50 && conf < 1.00,
         isTop1Hit: isTop1Hit, overlap: overlap, predTop3: predTop3,
-        bet: raceBet, ret: raceReturn, pnl: raceReturn - raceBet, payout: nisyatanPayout,
+        n2Bet: raceN2Bet, n2Ret: raceN2Ret, s3Bet: raceS3Bet, s3Ret: raceS3Ret,
+        bet: raceN2Bet + raceS3Bet, ret: raceN2Ret + raceS3Ret, pnl: racePnl, payout: nisyatanPayout,
         isTorigami: false
       });
     }
 
     var top1Pct = totalRaces > 0 ? (top1Hits / totalRaces * 100).toFixed(1) : "0.0";
+    var totalBet = n2Bet + s3Bet;
+    var totalReturn = n2Return + s3Return;
     var totalPnl = totalReturn - totalBet;
+    var n2Pnl = n2Return - n2Bet;
+    var s3Pnl = s3Return - s3Bet;
     var pnlColor = totalPnl >= 0 ? "#16a34a" : "#dc2626";
+    var n2Color = n2Pnl >= 0 ? "#16a34a" : "#dc2626";
+    var s3Color = s3Pnl >= 0 ? "#16a34a" : "#dc2626";
     var betRaces = raceCards.filter(function(r) { return r.bet > 0; }).length;
 
     var h = '<div class="yday-section">';
@@ -2116,8 +2154,9 @@ body {
 
     // P&Lサマリー
     h += '<div class="yday-summary">';
-    h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="yday-stat-label">収支</span></div>';
-    h += '<div class="yday-stat"><span class="yday-stat-value">' + totalBet.toLocaleString() + '円</span><span class="yday-stat-label">投資</span><span class="yday-stat-sub">' + betRaces + 'R</span></div>';
+    h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + pnlColor + '">' + (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString() + '円</span><span class="yday-stat-label">合計</span></div>';
+    h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + n2Color + ';font-size:14px">' + (n2Pnl >= 0 ? '+' : '') + n2Pnl.toLocaleString() + '</span><span class="yday-stat-label">2連単</span></div>';
+    h += '<div class="yday-stat"><span class="yday-stat-value" style="color:' + s3Color + ';font-size:14px">' + (s3Pnl >= 0 ? '+' : '') + s3Pnl.toLocaleString() + '</span><span class="yday-stat-label">3連単</span></div>';
     h += '<div class="yday-stat"><span class="yday-stat-value">' + top1Pct + '%</span><span class="yday-stat-label">&#9678;的中率</span><span class="yday-stat-sub">' + top1Hits + '/' + totalRaces + '</span></div>';
     h += '</div>';
 
@@ -2137,8 +2176,10 @@ body {
       h += confBadge(rc.conf);
       if (rc.pnl > 0) {
         h += '<span class="yday-hit" style="font-weight:700">+' + rc.pnl.toLocaleString() + '円</span>';
-      } else {
+      } else if (rc.pnl < 0) {
         h += '<span class="yday-miss">' + rc.pnl.toLocaleString() + '円</span>';
+      } else {
+        h += '<span class="yday-miss">±0</span>';
       }
       h += '</div>';
 
@@ -2156,9 +2197,10 @@ body {
       h += '</div>';
 
       h += '<div class="yday-bottom">';
-      if (rc.payout > 0) {
-        h += '<span style="font-size:11px;color:var(--sub)">2連単 ' + rc.payout.toLocaleString() + '円</span>';
-      }
+      var n2p = rc.n2Ret - rc.n2Bet;
+      var s3p = rc.s3Ret - rc.s3Bet;
+      h += '<span style="font-size:10px;color:' + (n2p >= 0 ? '#16a34a' : '#94a3b8') + '">2連単' + (n2p >= 0 ? '+' : '') + n2p.toLocaleString() + '</span>';
+      if (rc.s3Bet > 0) h += '<span style="font-size:10px;color:' + (s3p >= 0 ? '#16a34a' : '#94a3b8') + ';margin-left:6px">3連単' + (s3p >= 0 ? '+' : '') + s3p.toLocaleString() + '</span>';
       h += '<span class="yday-top3-label" style="margin-left:auto">Top3: ' + rc.overlap + '/3</span>';
       for (var d = 0; d < 3; d++) {
         h += '<span class="yday-dot ' + (d < rc.overlap ? 'yday-dot-hit' : 'yday-dot-miss') + '"></span>';
