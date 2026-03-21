@@ -1318,10 +1318,10 @@ body {
         var gap = sorted[0].confidence;
         if (gap == null) gap = (sorted[0].predicted_score || 0) - (sorted[1].predicted_score || 0);
         // F2は賭け対象外（バックテストで回収率64.5%）
-        if (gap >= 0.35 && rows[0].grade !== 'F2') {
+        if ((gap >= 1.10 || (gap >= 0.50 && gap < 0.80)) && rows[0].grade !== 'F2') {
           _recData.push({
             id: id, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
-            grade: rows[0].grade, gap: gap, isHigh: gap >= 0.89,
+            grade: rows[0].grade, gap: gap, isHigh: gap >= 1.10,
             top5: sorted.slice(0, 5)
           });
         }
@@ -1407,11 +1407,11 @@ body {
     }
 
     if (highRaces.length > 0) {
-      h += '<div class="rec-list-group-label">HIGH（信頼度 \u2265 0.89）— 各500円×4点</div>';
+      h += '<div class="rec-list-group-label">HIGH（信頼度 \u2265 1.10）— 各500円×4点</div>';
       for (var i = 0; i < highRaces.length; i++) h += renderCard(highRaces[i]);
     }
     if (medRaces.length > 0) {
-      h += '<div class="rec-list-group-label">MED（信頼度 \u2265 0.35）— 各100円×4点</div>';
+      h += '<div class="rec-list-group-label">MED（信頼度 0.50〜0.80）— 各100円×4点</div>';
       for (var i = 0; i < medRaces.length; i++) h += renderCard(medRaces[i]);
     }
 
@@ -1435,10 +1435,11 @@ body {
   function confBadge(conf) {
     if (conf == null) return '';
     var cls;
-    if (conf >= 0.89) cls = 'race-conf-high';
-    else if (conf >= 0.35) cls = 'race-conf-mid';
+    if (conf >= 1.10) cls = 'race-conf-high';
+    else if (conf >= 0.50 && conf < 0.80) cls = 'race-conf-mid';
     else cls = 'race-conf-low';
-    return '<span class="race-conf ' + cls + '">' + (conf >= 0.89 ? 'HIGH' : conf >= 0.35 ? 'MED' : 'LOW') + ' ' + conf.toFixed(2) + '</span>';
+    var label = conf >= 1.10 ? 'HIGH' : (conf >= 0.50 && conf < 0.80) ? 'MED' : 'LOW';
+    return '<span class="race-conf ' + cls + '">' + label + ' ' + conf.toFixed(2) + '</span>';
   }
 
   // キャッシュ: 日付ごとのレース・予測データ
@@ -1506,8 +1507,8 @@ body {
       for (const [venue, vr] of venueEntries) {
         // 場ごとの信頼度集計
         const confs = vr.map(r => cachedRaceConf[r.race_id]).filter(c => c != null);
-        const highCount = confs.filter(c => c >= 0.89).length;
-        const midCount = confs.filter(c => c >= 0.35 && c < 0.89).length;
+        const highCount = confs.filter(c => c >= 1.10).length;
+        const midCount = confs.filter(c => c >= 0.50 && c < 0.80).length;
         const hasRec = highCount > 0;
 
         // 時間帯
@@ -1704,10 +1705,10 @@ body {
     if (isF2) {
       lvl = "low"; lvlLabel = "SKIP"; betRec = "見送り（F2）";
       betColor = "#94a3b8"; barPct = 0;
-    } else if (gap12 >= 0.89) {
+    } else if (gap12 >= 1.10) {
       lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
       betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else if (gap12 >= 0.35) {
+    } else if (gap12 >= 0.50 && gap12 < 0.80) {
       lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
       betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
     } else {
@@ -1743,10 +1744,10 @@ body {
     if (isF2) {
       lvl = "low"; lvlLabel = "SKIP"; betRec = "見送り（F2）";
       betColor = "#94a3b8"; barPct = 0;
-    } else if (gap12 >= 0.89) {
+    } else if (gap12 >= 1.10) {
       lvl = "high"; lvlLabel = "HIGH"; betRec = "500円×4点 = 2,000円";
       betColor = "#dc2626"; barPct = Math.min(gap12 / 1.5 * 100, 100);
-    } else if (gap12 >= 0.35) {
+    } else if (gap12 >= 0.50 && gap12 < 0.80) {
       lvl = "mid"; lvlLabel = "MED"; betRec = "100円×4点 = 400円";
       betColor = "#ea580c"; barPct = Math.min(gap12 / 1.5 * 100, 100);
     } else {
@@ -1926,10 +1927,10 @@ body {
       top3Total += Math.min(3, actualTop3Set.size);
 
       var conf = sorted.length >= 2 ? sorted[0].predicted_score - sorted[1].predicted_score : 0;
-      var isHighConf = conf >= 0.89;
-      var isMed = conf >= 0.35 && conf < 0.89;
+      var isHighConf = conf >= 1.10;
+      var isMed = conf >= 0.50 && conf < 0.80;
 
-      // F2は賭け対象外（バックテストで回収率64.5%）
+      // F2は賭け対象外 + 0.80-1.10デッドゾーンスキップ
       var isF2 = rows[0].grade === 'F2';
       var betUnit = isF2 ? 0 : (isHighConf ? 500 : isMed ? 100 : 0);
       var raceBet = betUnit * 4;
@@ -2121,7 +2122,7 @@ body {
         // F2は賭け対象外（バックテストで回収率64.5%）
         var raceGrade = rows[0].race_grade || rows[0].grade || '';
         var isF2 = raceGrade === 'F2';
-        var betUnit = isF2 ? 0 : (conf >= 0.89 ? 500 : conf >= 0.35 ? 100 : 0);
+        var betUnit = isF2 ? 0 : (conf >= 1.10 ? 500 : (conf >= 0.50 && conf < 0.80) ? 100 : 0);
         var raceBet = betUnit * 4;
         var raceReturn = 0;
 

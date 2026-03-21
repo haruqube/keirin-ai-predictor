@@ -259,9 +259,9 @@ def predict_races(date: str, velodromes: str = "major"):
 
             if is_f2:
                 gap_label, bet_rec = "SKIP", "見送り（F2）"
-            elif score_gap >= 0.89:
+            elif score_gap >= 1.10:
                 gap_label, bet_rec = "HIGH", "500円×4点=2,000円"
-            elif score_gap >= 0.35:
+            elif 0.50 <= score_gap < 0.80:
                 gap_label, bet_rec = "MED", "100円×4点=400円"
             else:
                 gap_label, bet_rec = "LOW", "見送り"

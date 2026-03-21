@@ -101,7 +101,7 @@ def fetch_rows(conn: sqlite3.Connection, table: str, columns: list[str],
     if since:
         if table == "races":
             query += f" WHERE date >= '{since}'"
-        elif table in ("entries", "race_results", "predictions", "prediction_results"):
+        elif table in ("entries", "race_results", "race_payouts", "predictions", "prediction_results"):
             query += f" WHERE race_id IN (SELECT race_id FROM races WHERE date >= '{since}')"
         elif table == "rider_stats":
             # rider_statsは日付フィルタなし（期別データ）
