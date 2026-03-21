@@ -2068,7 +2068,7 @@ body {
       while (true) {
         var { data: batch, error } = await sb
           .from("prediction_detail")
-          .select("race_id, race_date, bike_number, predicted_score, predicted_rank, finish_position")
+          .select("race_id, race_date, bike_number, predicted_score, predicted_rank, finish_position, grade")
           .gte("race_date", "2026-01-01")
           .lte("predicted_rank", 5)
           .order("race_date")
