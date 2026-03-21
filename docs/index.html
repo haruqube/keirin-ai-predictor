@@ -1334,8 +1334,9 @@ body {
       if (_recData.length === 0) { el.innerHTML = ""; return; }
       _recData.sort(function(a, b) { return b.gap - a.gap; });
 
-      var highCount = _recData.filter(function(r) { return r.isHigh; }).length;
-      var medCount = _recData.length - highCount;
+      var highCount = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; }).length;
+      var medCount = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; }).length;
+      var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
       var totalInvest = highCount * 2000 + medCount * 400;
 
       var h = '<div class="rec-banner" id="recBanner">';
@@ -1343,8 +1344,9 @@ body {
       h += '<div class="rec-banner-counts">';
       if (highCount > 0) h += '<span class="rec-banner-count">HIGH ' + highCount + '件</span>';
       if (medCount > 0) h += '<span class="rec-banner-count">MED ' + medCount + '件</span>';
+      if (tgCount > 0) h += '<span class="rec-banner-count" style="color:#94a3b8">見送り ' + tgCount + '件</span>';
       h += '</div>';
-      h += '<div class="rec-banner-total">投資合計: ' + totalInvest.toLocaleString() + '円（' + _recData.length + 'レース）</div>';
+      h += '<div class="rec-banner-total">投資合計: ' + totalInvest.toLocaleString() + '円（' + (highCount + medCount) + 'レース）</div>';
       h += '<div class="rec-banner-arrow">すべて見る &#8250;</div>';
       h += '</div>';
 
@@ -1370,14 +1372,16 @@ body {
       return;
     }
 
-    var highCount = _recData.filter(function(r) { return r.isHigh; }).length;
-    var medCount = _recData.length - highCount;
+    var highCount = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; }).length;
+    var medCount = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; }).length;
+    var tgCount = _recData.filter(function(r) { return r.isTorigami; }).length;
     var totalInvest = highCount * 2000 + medCount * 400;
 
     var h = '';
     h += '<div class="rec-list-summary">';
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#dc2626">' + highCount + '</span><span class="rec-list-stat-label">HIGH</span></div>';
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#ea580c">' + medCount + '</span><span class="rec-list-stat-label">MED</span></div>';
+    if (tgCount > 0) h += '<div class="rec-list-stat"><span class="rec-list-stat-value" style="color:#94a3b8">' + tgCount + '</span><span class="rec-list-stat-label">見送り</span></div>';
     h += '<div class="rec-list-stat"><span class="rec-list-stat-value">' + totalInvest.toLocaleString() + '円</span><span class="rec-list-stat-label">投資合計</span></div>';
     h += '</div>';
 
@@ -1396,24 +1400,24 @@ body {
 
     function renderCard(r) {
       var expired = r.startTime && r.startTime <= nowHHMM;
+      var dimmed = expired || r.isTorigami;
       var lvlCls = r.isHigh ? "rec-high" : "rec-med";
-      var lvlLabel = r.isHigh ? "HIGH" : "MED";
-      var lvlBg = r.isHigh ? "#dc2626" : "#ea580c";
+      var lvlLabel = r.isTorigami ? "\u898B\u9001\u308A" : (r.isHigh ? "HIGH" : "MED");
+      var lvlBg = dimmed ? "#94a3b8" : (r.isHigh ? "#dc2626" : "#ea580c");
       var betAmount = r.isHigh ? "500\u5186\u00d74" : "100\u5186\u00d74";
       var betTotal = r.isHigh ? "2,000\u5186" : "400\u5186";
       var honmei = r.top5[0];
-      var timeStr = r.startTime ? '<span style="color:' + (expired ? '#94a3b8' : 'var(--muted)') + ';font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
+      var timeStr = r.startTime ? '<span style="color:' + (dimmed ? '#94a3b8' : 'var(--muted)') + ';font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
 
-      var cardStyle = expired ? ' style="opacity:0.4;pointer-events:auto"' : '';
-      if (r.isTorigami && !expired) cardStyle = ' style="border-left:3px solid #f59e0b"';
+      var cardStyle = dimmed ? ' style="opacity:0.45;pointer-events:auto"' : '';
       var c = '<div class="rec-full-card ' + lvlCls + '" data-raceid="' + r.id + '"' + cardStyle + '>';
       c += '<div class="rec-full-top">';
       c += '<span class="rec-full-venue">' + r.velodrome + ' ' + r.raceNumber + 'R ' + gradeBadge(r.grade) + timeStr;
       if (expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:500">締切</span>';
-      if (r.isTorigami && !expired) c += ' <span style="font-size:10px;color:#f59e0b;font-weight:700">トリガミ注意</span>';
+      if (r.isTorigami && !expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:700">トリガミ見送り</span>';
       c += '</span>';
-      c += '<span class="rec-full-score" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + r.gap.toFixed(2) + '</span>';
-      c += '<span class="rec-full-level" style="background:' + (expired ? '#94a3b8' : lvlBg) + '">' + lvlLabel + '</span>';
+      c += '<span class="rec-full-score" style="color:' + (dimmed ? '#94a3b8' : (r.isHigh ? '#dc2626' : '#ea580c')) + '">' + r.gap.toFixed(2) + '</span>';
+      c += '<span class="rec-full-level" style="background:' + lvlBg + '">' + lvlLabel + '</span>';
       c += '</div>';
       c += '<div class="rec-full-riders">';
       c += '<span class="rec-full-honmei">';
@@ -1425,16 +1429,20 @@ body {
       for (var i = 1; i < Math.min(5, r.top5.length); i++) {
         if (i > 1) c += ' ';
         var oddsVal = r.top5[i].exacta_odds;
-        var oddsColor = oddsVal != null && oddsVal < 4.0 ? '#f59e0b' : (expired ? '#94a3b8' : 'var(--text)');
+        var oddsColor = oddsVal != null && oddsVal < 4.0 ? '#f59e0b' : (dimmed ? '#94a3b8' : 'var(--text)');
         c += bikeCircle(r.top5[i].bike_number);
         if (oddsVal != null) c += '<span style="font-size:10px;color:' + oddsColor + ';margin-right:4px">' + oddsVal.toFixed(1) + 'x</span>';
       }
       c += '</span>';
       c += '</div>';
       c += '<div class="rec-full-bet">';
-      c += '<span class="rec-full-bet-label">2\u9023\u5358\u25CE1\u7740\u56FA\u5B9A4\u70B9:</span>';
-      c += '<span class="rec-full-bet-amount" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + betAmount + ' = ' + betTotal + '</span>';
-      if (r.maxOdds != null) c += '<span style="font-size:10px;color:var(--muted);margin-left:6px">max ' + r.maxOdds.toFixed(1) + 'x</span>';
+      if (r.isTorigami) {
+        c += '<span class="rec-full-bet-label" style="color:#94a3b8">max odds < 4.0x \u2192 \u8CB7\u308F\u306A\u3044</span>';
+      } else {
+        c += '<span class="rec-full-bet-label">2\u9023\u5358\u25CE1\u7740\u56FA\u5B9A4\u70B9:</span>';
+        c += '<span class="rec-full-bet-amount" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + betAmount + ' = ' + betTotal + '</span>';
+      }
+      if (r.maxOdds != null && !r.isTorigami) c += '<span style="font-size:10px;color:var(--muted);margin-left:6px">max ' + r.maxOdds.toFixed(1) + 'x</span>';
       c += '</div>';
       c += '</div>';
       return c;
@@ -1450,9 +1458,10 @@ body {
       });
       for (var i = 0; i < sorted.length; i++) h += renderCard(sorted[i]);
     } else {
-      // 信頼度順: HIGH → MED のグループ表示
-      var highRaces = _recData.filter(function(r) { return r.isHigh; });
-      var medRaces = _recData.filter(function(r) { return !r.isHigh; });
+      // 信頼度順: HIGH → MED → 見送り のグループ表示
+      var highRaces = _recData.filter(function(r) { return r.isHigh && !r.isTorigami; });
+      var medRaces = _recData.filter(function(r) { return !r.isHigh && !r.isTorigami; });
+      var tgRaces = _recData.filter(function(r) { return r.isTorigami; });
       if (highRaces.length > 0) {
         h += '<div class="rec-list-group-label">HIGH\uFF08\u4FE1\u983C\u5EA6 \u2265 1.10\uFF09\u2014 \u5404500\u5186\u00d74\u70B9</div>';
         for (var i = 0; i < highRaces.length; i++) h += renderCard(highRaces[i]);
@@ -1460,6 +1469,10 @@ body {
       if (medRaces.length > 0) {
         h += '<div class="rec-list-group-label">MED\uFF08\u4FE1\u983C\u5EA6 0.50\u301C0.80\uFF09\u2014 \u5404100\u5186\u00d74\u70B9</div>';
         for (var i = 0; i < medRaces.length; i++) h += renderCard(medRaces[i]);
+      }
+      if (tgRaces.length > 0) {
+        h += '<div class="rec-list-group-label" style="color:#94a3b8">\u898B\u9001\u308A\uFF08\u30C8\u30EA\u30AC\u30DF\uFF09\u2014 max odds < 4.0x</div>';
+        for (var i = 0; i < tgRaces.length; i++) h += renderCard(tgRaces[i]);
       }
     }
 
