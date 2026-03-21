@@ -63,26 +63,18 @@ class FeatureBuilder:
             "rider_form_acuity",
             "rider_days_since_last_race",
             "rider_finish_pos_std",
-            # 選手年齢 (1) — Phase 2b
-            "rider_age",
             # レース条件 (5)
             "race_grade_num",
             "race_bank_length",
             "race_number",
             "entry_frame_number",
             "entry_bike_number",
-            # Phase 1: 隠れた特徴量 (5)
+            # 出走表データ (4)
             "entry_competition_score",
             "entry_win_rate",
             "entry_place_rate",
             "entry_gear_ratio",
             "race_rider_count",
-            # Phase 2a: 天候・バンク状態 (2)
-            "race_weather",
-            "race_track_condition",
-            # Phase 2d: オッズ・人気 (2)
-            "entry_odds",
-            "entry_popularity",
             # ライン (6)
             "line_size",
             "line_avg_class",

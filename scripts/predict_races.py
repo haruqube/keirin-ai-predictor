@@ -259,8 +259,10 @@ def predict_races(date: str, velodromes: str = "major"):
 
             if is_f2:
                 gap_label, bet_rec = "SKIP", "見送り（F2）"
-            elif score_gap >= 1.10:
+            elif score_gap >= 1.00:
                 gap_label, bet_rec = "HIGH", "500円×4点=2,000円"
+            elif 0.80 <= score_gap < 1.00:
+                gap_label, bet_rec = "MED+", "200円×4点=800円"
             elif 0.50 <= score_gap < 0.80:
                 gap_label, bet_rec = "MED", "100円×4点=400円"
             else:
@@ -277,7 +279,7 @@ def predict_races(date: str, velodromes: str = "major"):
             # 2連単オッズ取得（◎→○,▲,△,△ の4点）
             exacta_odds_map = {}  # rider_id → exacta_odds
             torigami_warn = ""
-            if gap_label in ("HIGH", "MED"):
+            if gap_label in ("HIGH", "MED+", "MED"):
                 odds_data = scraper.scrape_exacta_odds(race_id)
                 if odds_data:
                     honmei_bike = bike_map.get(df.iloc[0]["rider_id"], "")

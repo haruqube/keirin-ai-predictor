@@ -34,6 +34,7 @@ def get_predictions_for_date(date: str) -> list[dict]:
 
         preds = conn.execute("""
             SELECT p.rider_id, p.predicted_rank, p.predicted_score, p.mark,
+                   p.confidence,
                    rd.name, rd.class
             FROM predictions p
             LEFT JOIN riders rd ON p.rider_id = rd.rider_id
@@ -60,14 +61,31 @@ def get_predictions_for_date(date: str) -> list[dict]:
         for i, pred in enumerate(preds):
             riders[i]["bike_number"] = bike_map.get(pred["rider_id"], "")
 
+        # 信頼度・推奨賭け金
+        confidence = preds[0]["confidence"] if preds else 0.0
+        grade = race_row["grade"] or ""
+        if grade == "F2":
+            bet_label, bet_rec = "SKIP", "見送り（F2）"
+        elif confidence >= 1.00:
+            bet_label, bet_rec = "HIGH", "500円×4点=2,000円"
+        elif confidence >= 0.80:
+            bet_label, bet_rec = "MED+", "200円×4点=800円"
+        elif confidence >= 0.50:
+            bet_label, bet_rec = "MED", "100円×4点=400円"
+        else:
+            bet_label, bet_rec = "LOW", "見送り"
+
         races.append({
             "race_id": race_id,
             "velodrome": race_row["velodrome"],
             "race_number": race_row["race_number"],
             "race_name": race_row["race_name"] or "",
-            "grade": race_row["grade"] or "",
+            "grade": grade,
             "rider_count": race_row["rider_count"],
             "riders": riders,
+            "confidence": confidence or 0.0,
+            "bet_label": bet_label,
+            "bet_rec": bet_rec,
         })
 
     conn.close()

@@ -183,6 +183,68 @@ def generate_detail_report(conn, formatted_date: str, date_str: str) -> str:
         hit_mark = "✓" if race_top1_hit else "✗"
         lines.append(f"  → ◎{hit_mark}  Top3一致: {t3}/3")
 
+    # === 2連単 収支分析 ===
+    pnl_investment = 0
+    pnl_payout = 0
+    pnl_bets = 0
+    pnl_hits = 0
+
+    for race in race_rows:
+        race_id = race["race_id"]
+        grade = race["grade"] or ""
+        if grade == "F2":
+            continue
+
+        # 予測の信頼度を取得
+        conf_row = conn.execute(
+            "SELECT confidence FROM predictions WHERE race_id = ? AND predicted_rank = 1",
+            (race_id,)
+        ).fetchone()
+        if not conf_row:
+            continue
+        confidence = conf_row["confidence"] or 0.0
+
+        # 賭けカテゴリ判定
+        if confidence >= 1.00:
+            bet_per_ticket = 500
+        elif confidence >= 0.80:
+            bet_per_ticket = 200
+        elif confidence >= 0.50:
+            bet_per_ticket = 100
+        else:
+            continue  # SKIP
+
+        # ◎→○▲△△ の4点買い
+        preds_for_pnl = conn.execute("""
+            SELECT p.rider_id, e.bike_number
+            FROM predictions p
+            LEFT JOIN entries e ON p.race_id = e.race_id AND p.rider_id = e.rider_id
+            WHERE p.race_id = ? ORDER BY p.predicted_rank
+        """, (race_id,)).fetchall()
+
+        if len(preds_for_pnl) < 2:
+            continue
+
+        honmei_bike = preds_for_pnl[0]["bike_number"] or 0
+        tickets = []
+        for p in preds_for_pnl[1:5]:
+            tb = p["bike_number"] or 0
+            tickets.append(f"{honmei_bike}>{tb}")
+
+        investment = bet_per_ticket * len(tickets)
+        pnl_investment += investment
+        pnl_bets += 1
+
+        # 配当チェック
+        pay_row = conn.execute(
+            "SELECT nisyatan_combo, nisyatan_payout FROM race_payouts WHERE race_id = ?",
+            (race_id,)
+        ).fetchone()
+        if pay_row and pay_row["nisyatan_combo"] in tickets:
+            won = pay_row["nisyatan_payout"] / 100 * bet_per_ticket
+            pnl_payout += won
+            pnl_hits += 1
+
     # サマリー
     lines.append(f"\n{'=' * 60}")
     lines.append(f"  サマリー ({formatted_date})")
@@ -191,6 +253,17 @@ def generate_detail_report(conn, formatted_date: str, date_str: str) -> str:
     if total_races > 0:
         lines.append(f"  ◎的中率: {top1_hits}/{total_races} ({top1_hits / total_races * 100:.1f}%)")
         lines.append(f"  Top3一致率: {top3_hits}/{top3_total} ({top3_hits / top3_total * 100:.1f}%)" if top3_total > 0 else "")
+
+    if pnl_bets > 0:
+        roi = pnl_payout / pnl_investment * 100 if pnl_investment > 0 else 0
+        lines.append(f"\n  --- 2連単 収支 ---")
+        lines.append(f"  ベット対象: {pnl_bets}R")
+        lines.append(f"  2連単的中: {pnl_hits}/{pnl_bets} ({pnl_hits/pnl_bets*100:.1f}%)")
+        lines.append(f"  投資: {pnl_investment:,}円")
+        lines.append(f"  回収: {pnl_payout:,.0f}円")
+        lines.append(f"  回収率: {roi:.1f}%")
+        lines.append(f"  収支: {pnl_payout - pnl_investment:+,.0f}円")
+
     lines.append("=" * 60)
 
     report = "\n".join(lines)
