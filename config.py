@@ -125,6 +125,15 @@ BET_SKIP_REC = "見送り"
 BET_F2_LABEL = "SKIP"
 BET_F2_REC = "見送り（F2）"
 
+# ── 3連単戦略（◎1着固定 ○▲△フォーメーション 6点買い） ──
+TRIFECTA_STRATEGY = [
+    # (最低信頼度, ラベル, 1点あたり金額, 推奨表示)
+    (2.00, "S3-HIGH", 500, "500円×6点=3,000円"),
+    (1.50, "S3-MED+", 200, "200円×6点=1,200円"),
+    (1.00, "S3-MED",  100, "100円×6点=600円"),
+]
+TRIFECTA_POINTS = 6  # ◎-○▲△-○▲△ の6点
+
 # ── デフォルト値 ──
 DEFAULT_GEAR_RATIO = 3.93
 DEFAULT_RIDER_COUNT = 9
@@ -134,10 +143,20 @@ DEFAULT_AVG_MARGIN = 2.0
 
 
 def get_bet_category(confidence: float, grade: str = "") -> tuple[str, str, int]:
-    """信頼度とグレードから賭けカテゴリを判定。(label, rec, bet_per_ticket) を返す。"""
+    """信頼度とグレードから2連単カテゴリを判定。(label, rec, bet_per_ticket) を返す。"""
     if grade == "F2":
         return BET_F2_LABEL, BET_F2_REC, 0
     for min_conf, label, amount, rec in BET_STRATEGY:
+        if confidence >= min_conf:
+            return label, rec, amount
+    return BET_SKIP_LABEL, BET_SKIP_REC, 0
+
+
+def get_trifecta_category(confidence: float, grade: str = "") -> tuple[str, str, int]:
+    """信頼度とグレードから3連単カテゴリを判定。(label, rec, bet_per_ticket) を返す。"""
+    if grade == "F2":
+        return BET_F2_LABEL, BET_F2_REC, 0
+    for min_conf, label, amount, rec in TRIFECTA_STRATEGY:
         if confidence >= min_conf:
             return label, rec, amount
     return BET_SKIP_LABEL, BET_SKIP_REC, 0

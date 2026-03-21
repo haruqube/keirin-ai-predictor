@@ -20,8 +20,10 @@
 
 {% if race.grade %}**{{ race.grade }}** / {% endif %}{{ race.rider_count }}車立
 {% if race.bet_label %}
-> **信頼度: {{ "%.2f"|format(race.confidence) }} ({{ race.bet_label }})** → {{ race.bet_rec }}
-{% endif %}
+> **信頼度: {{ "%.2f"|format(race.confidence) }}**
+> 2連単: ({{ race.bet_label }}) → {{ race.bet_rec }}
+{% if race.tri_label and race.tri_label not in ['LOW', 'SKIP'] %}> 3連単: ({{ race.tri_label }}) → {{ race.tri_rec }}
+{% endif %}{% endif %}
 
 | 予想 | 車番 | 選手名 | 級班 | スコア |
 |------|------|--------|------|--------|
@@ -50,6 +52,16 @@
 | 0.80-1.00 | MED+ | 200円×4点=800円 |
 | 0.50-0.80 | MED | 100円×4点=400円 |
 | 0.50未満 | LOW | 見送り |
+| F2 | SKIP | 見送り |
+
+### 推奨賭け金（3連単 ◎-○▲△-○▲△ の6点買い）
+
+| 信頼度 | ラベル | 推奨 |
+|--------|--------|------|
+| 2.00以上 | S3-HIGH | 500円×6点=3,000円 |
+| 1.50-2.00 | S3-MED+ | 200円×6点=1,200円 |
+| 1.00-1.50 | S3-MED | 100円×6点=600円 |
+| 1.00未満 | LOW | 見送り |
 | F2 | SKIP | 見送り |
 
 **免責事項:** 本記事はAIによる分析結果であり、車券購入は自己責任でお願いします。

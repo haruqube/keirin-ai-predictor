@@ -8,7 +8,7 @@ import argparse
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import RESULTS_DIR, get_bet_category
+from config import RESULTS_DIR, get_bet_category, get_trifecta_category
 from db.schema import get_connection
 from publishing.note_formatter import NoteFormatter
 
@@ -63,6 +63,7 @@ def get_predictions_for_date(date: str) -> list[dict]:
         confidence = preds[0]["confidence"] if preds else 0.0
         grade = race_row["grade"] or ""
         bet_label, bet_rec, _ = get_bet_category(confidence, grade)
+        tri_label, tri_rec, _ = get_trifecta_category(confidence, grade)
 
         races.append({
             "race_id": race_id,
@@ -75,6 +76,8 @@ def get_predictions_for_date(date: str) -> list[dict]:
             "confidence": confidence or 0.0,
             "bet_label": bet_label,
             "bet_rec": bet_rec,
+            "tri_label": tri_label,
+            "tri_rec": tri_rec,
         })
 
     conn.close()

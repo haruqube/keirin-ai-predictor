@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import (
     NETKEIRIN_BASE_URL, VELODROME_CODES, RESULTS_DIR, CLASS_MAP,
-    MARKS, LINE_BONUS, STRONGEST_LINE_BONUS, get_bet_category,
+    MARKS, LINE_BONUS, STRONGEST_LINE_BONUS,
+    get_bet_category, get_trifecta_category,
 )
 from db.schema import get_connection, insert_race, insert_rider, insert_entry, insert_prediction
 from data.scraper import KeirinScraper
@@ -247,6 +248,7 @@ def predict_races(date: str, velodromes: str = "major"):
             is_f2 = (race_grade == "F2")
 
             gap_label, bet_rec, _ = get_bet_category(score_gap, race_grade)
+            tri_label, tri_rec, _ = get_trifecta_category(score_gap, race_grade)
 
             velodrome = entry_data.get("velodrome", "?")
             rnum = entry_data.get("race_number", "?")
@@ -280,7 +282,9 @@ def predict_races(date: str, velodromes: str = "major"):
 
             print(f"\n{'='*50}")
             print(f"  {velodrome} {rnum}R")
-            print(f"  信頼度: {score_gap:.2f} ({gap_label}) → {bet_rec}{torigami_warn}")
+            print(f"  信頼度: {score_gap:.2f}")
+            print(f"  2連単: ({gap_label}) → {bet_rec}{torigami_warn}")
+            print(f"  3連単: ({tri_label}) → {tri_rec}")
             print(f"{'='*50}")
 
             for i, row in df.iterrows():

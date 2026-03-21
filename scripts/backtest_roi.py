@@ -20,7 +20,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import numpy as np
 import pandas as pd
-from config import RESULTS_DIR, GRADE_MAP, get_bet_category
+from config import RESULTS_DIR, GRADE_MAP, get_bet_category, get_trifecta_category
 from features.builder import FeatureBuilder
 from models.lgbm_ranker import LGBMRanker
 from db.schema import get_connection
@@ -58,7 +58,8 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
 
     # race_payoutsを取得
     payouts_df = pd.read_sql("""
-        SELECT race_id, nisyatan_combo, nisyatan_payout
+        SELECT race_id, nisyatan_combo, nisyatan_payout,
+               sanrentan_combo, sanrentan_payout
         FROM race_payouts
         WHERE race_id IN (SELECT race_id FROM races WHERE date >= ? AND date <= ?)
     """, conn, params=(f"{year_start}-01-01", f"{year_end}-12-31"))
@@ -66,6 +67,8 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
 
     payout_map = dict(zip(payouts_df["race_id"],
                           zip(payouts_df["nisyatan_combo"], payouts_df["nisyatan_payout"])))
+    sanrentan_map = dict(zip(payouts_df["race_id"],
+                             zip(payouts_df["sanrentan_combo"], payouts_df["sanrentan_payout"])))
     grade_map = dict(zip(grade_df["race_id"], grade_df["grade"]))
     date_map = dict(zip(grade_df["race_id"], grade_df["date"]))
     logger.info("Payouts: %d races, Grades: %d races", len(payout_map), len(grade_map))
@@ -98,6 +101,7 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
 
         # 賭けカテゴリ判定
         bet_cat, _, bet_per_ticket = get_bet_category(confidence, grade)
+        tri_cat, _, tri_per_ticket = get_trifecta_category(confidence, grade)
 
         # ◎ の的中確認
         honmei_rid = pred.iloc[0]["rider_id"]
@@ -132,8 +136,31 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
         investment = bet_per_ticket * num_tickets if bet_cat != "SKIP" else 0
         payout_won = 0
         if exacta_hit and bet_cat != "SKIP":
-            # 配当は100円あたり → 実際の回収 = payout_amount / 100 * bet_per_ticket
             payout_won = payout_amount / 100 * bet_per_ticket
+
+        # 3連単の6点買い: ◎-○▲△-○▲△
+        tri_tickets = []
+        tri_investment = 0
+        tri_payout_won = 0
+        tri_hit = False
+        if tri_per_ticket > 0 and len(pred) >= 4:
+            partners = []
+            for i in range(1, min(4, len(pred))):
+                tb = int(pred.iloc[i]["bike_number"]) if pd.notna(pred.iloc[i]["bike_number"]) else 0
+                partners.append(tb)
+            for p2 in partners:
+                for p3 in partners:
+                    if p2 != p3:
+                        tri_tickets.append(f"{honmei_bike}>{p2}>{p3}")
+
+            tri_investment = tri_per_ticket * len(tri_tickets)
+
+            s_info = sanrentan_map.get(race_id)
+            s_combo = s_info[0] if s_info else None
+            s_payout = s_info[1] if s_info else 0
+            if s_combo and s_combo in tri_tickets:
+                tri_hit = True
+                tri_payout_won = s_payout / 100 * tri_per_ticket
 
         results.append({
             "race_id": race_id,
@@ -141,14 +168,14 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
             "grade": grade,
             "confidence": confidence,
             "bet_cat": bet_cat,
+            "tri_cat": tri_cat,
             "top1_hit": top1_hit,
             "exacta_hit": exacta_hit,
             "investment": investment,
             "payout_won": payout_won,
-            "payout_amount": payout_amount,
-            "honmei_bike": honmei_bike,
-            "tickets": tickets,
-            "winning_combo": winning_combo,
+            "tri_investment": tri_investment,
+            "tri_payout_won": tri_payout_won,
+            "tri_hit": tri_hit,
         })
 
     res_df = pd.DataFrame(results)
@@ -166,20 +193,26 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
 
     # ベットしたレースのみ
     bet_df = res_df[res_df["bet_cat"] != "SKIP"]
+    tri_bet_df = res_df[res_df["tri_cat"].isin(["S3-HIGH", "S3-MED+", "S3-MED"])]
     if len(bet_df) > 0:
-        total_investment = bet_df["investment"].sum()
-        total_payout = bet_df["payout_won"].sum()
+        n2_inv = bet_df["investment"].sum()
+        n2_pay = bet_df["payout_won"].sum()
+        s3_inv = res_df["tri_investment"].sum()
+        s3_pay = res_df["tri_payout_won"].sum()
+        total_investment = n2_inv + s3_inv
+        total_payout = n2_pay + s3_pay
         roi = total_payout / total_investment * 100 if total_investment > 0 else 0
         exacta_hits = bet_df["exacta_hit"].sum()
+        tri_hits = res_df["tri_hit"].sum()
         print(f"\n【全ベット】")
-        print(f"  対象レース: {len(bet_df)}/{total}")
-        print(f"  2連単的中: {exacta_hits}/{len(bet_df)} ({exacta_hits/len(bet_df)*100:.1f}%)")
-        print(f"  投資額: ¥{total_investment:,.0f}")
-        print(f"  回収額: ¥{total_payout:,.0f}")
-        print(f"  回収率: {roi:.1f}%")
-        print(f"  収支: ¥{total_payout - total_investment:+,.0f}")
+        print(f"  2連単: {len(bet_df)}R  的中{exacta_hits}  投資¥{n2_inv:,.0f}  回収¥{n2_pay:,.0f}  ROI {n2_pay/n2_inv*100:.1f}%  収支¥{n2_pay-n2_inv:+,.0f}")
+        print(f"  3連単: {len(tri_bet_df)}R  的中{int(tri_hits)}  投資¥{s3_inv:,.0f}  回収¥{s3_pay:,.0f}  ROI {s3_pay/s3_inv*100:.1f}%  収支¥{s3_pay-s3_inv:+,.0f}" if s3_inv > 0 else "  3連単: 対象なし")
+        print(f"  合計: 投資¥{total_investment:,.0f}  回収¥{total_payout:,.0f}  ROI {roi:.1f}%  収支¥{total_payout-total_investment:+,.0f}")
 
-    # カテゴリ別
+    # 2連単カテゴリ別
+    print(f"\n{'─' * 70}")
+    print("  2連単カテゴリ別")
+    print(f"{'─' * 70}")
     for cat in ["HIGH", "MED+", "MED"]:
         cat_df = res_df[res_df["bet_cat"] == cat]
         if len(cat_df) == 0:
@@ -189,13 +222,24 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
         roi = pay / inv * 100 if inv > 0 else 0
         hits = cat_df["exacta_hit"].sum()
         t1h = cat_df["top1_hit"].sum()
-        print(f"\n【{cat}】")
-        print(f"  レース数: {len(cat_df)}")
-        print(f"  ◎1着: {t1h}/{len(cat_df)} ({t1h/len(cat_df)*100:.1f}%)")
-        print(f"  2連単的中: {hits}/{len(cat_df)} ({hits/len(cat_df)*100:.1f}%)")
-        print(f"  投資: ¥{inv:,.0f}  回収: ¥{pay:,.0f}")
-        print(f"  回収率: {roi:.1f}%")
-        print(f"  収支: ¥{pay - inv:+,.0f}")
+        print(f"\n  【{cat}】 {len(cat_df)}R")
+        print(f"    ◎1着: {t1h}/{len(cat_df)} ({t1h/len(cat_df)*100:.1f}%)")
+        print(f"    2連単的中: {hits}/{len(cat_df)} ({hits/len(cat_df)*100:.1f}%)")
+        print(f"    投資: ¥{inv:,.0f}  回収: ¥{pay:,.0f}  ROI: {roi:.1f}%  収支: ¥{pay-inv:+,.0f}")
+
+    # 3連単カテゴリ別
+    print(f"\n{'─' * 70}")
+    print("  3連単カテゴリ別")
+    print(f"{'─' * 70}")
+    for cat in ["S3-HIGH", "S3-MED+", "S3-MED"]:
+        cat_df = res_df[res_df["tri_cat"] == cat]
+        if len(cat_df) == 0:
+            continue
+        inv = cat_df["tri_investment"].sum()
+        pay = cat_df["tri_payout_won"].sum()
+        roi = pay / inv * 100 if inv > 0 else 0
+        hits = cat_df["tri_hit"].sum()
+        print(f"  {cat}: {len(cat_df)}R  的中{int(hits)}  投資¥{inv:,.0f}  回収¥{pay:,.0f}  ROI {roi:.1f}%  収支¥{pay-inv:+,.0f}")
 
     # 年別
     print(f"\n{'─' * 70}")
@@ -206,16 +250,20 @@ def run_backtest(year_start: int = 2024, year_end: int = 2026):
         yr_bet = yr_df[yr_df["bet_cat"] != "SKIP"]
         if len(yr_bet) == 0:
             continue
-        inv = yr_bet["investment"].sum()
-        pay = yr_bet["payout_won"].sum()
-        roi = pay / inv * 100 if inv > 0 else 0
+        n2i = yr_bet["investment"].sum()
+        n2p = yr_bet["payout_won"].sum()
+        s3i = yr_df["tri_investment"].sum()
+        s3p = yr_df["tri_payout_won"].sum()
+        ti = n2i + s3i
+        tp = n2p + s3p
         hits = yr_bet["exacta_hit"].sum()
+        tri_h = yr_df["tri_hit"].sum()
         t1 = yr_df["top1_hit"].sum()
-        print(f"\n  {year}年: {len(yr_df)} races (bet: {len(yr_bet)})")
-        print(f"    ◎1着: {t1}/{len(yr_df)} ({t1/len(yr_df)*100:.1f}%)")
-        print(f"    2連単的中: {hits}/{len(yr_bet)} ({hits/len(yr_bet)*100:.1f}%)")
-        print(f"    投資: ¥{inv:,.0f}  回収: ¥{pay:,.0f}")
-        print(f"    回収率: {roi:.1f}%  収支: ¥{pay - inv:+,.0f}")
+        print(f"\n  {year}年: {len(yr_df)}R  ◎1着: {t1}/{len(yr_df)} ({t1/len(yr_df)*100:.1f}%)")
+        print(f"    2連単: 的中{hits}/{len(yr_bet)}  投資¥{n2i:,.0f}  回収¥{n2p:,.0f}  ROI {n2p/n2i*100:.1f}%  収支¥{n2p-n2i:+,.0f}")
+        if s3i > 0:
+            print(f"    3連単: 的中{int(tri_h)}  投資¥{s3i:,.0f}  回収¥{s3p:,.0f}  ROI {s3p/s3i*100:.1f}%  収支¥{s3p-s3i:+,.0f}")
+        print(f"    合計: 投資¥{ti:,.0f}  回収¥{tp:,.0f}  ROI {tp/ti*100:.1f}%  収支¥{tp-ti:+,.0f}")
 
     # グレード別
     print(f"\n{'─' * 70}")

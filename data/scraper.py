@@ -332,7 +332,7 @@ class KeirinScraper:
         return results
 
     def _parse_payout_table(self, soup: BeautifulSoup) -> dict:
-        """配当テーブルをパース（2連単・2連複）"""
+        """配当テーブルをパース（2連単・2連複・3連単）"""
         payout = {}
         pay_el = soup.select_one('.Payout_Detail_Table')
         if not pay_el:
@@ -351,6 +351,13 @@ class KeirinScraper:
         if m2:
             payout['nishafuku_combo'] = m2.group(1).strip()
             payout['nishafuku_payout'] = int(m2.group(2).replace(',', ''))
+
+        # 3連単
+        m3 = re.search(r'３連単\s+(\d+[->＞\s]+\d+[->＞\s]+\d+)\s+([\d,]+)円\s+(\d+)人気', text)
+        if m3:
+            payout['sanrentan_combo'] = m3.group(1).strip()
+            payout['sanrentan_payout'] = int(m3.group(2).replace(',', ''))
+            payout['sanrentan_popularity'] = int(m3.group(3))
 
         return payout
 

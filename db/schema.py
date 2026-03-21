@@ -167,11 +167,18 @@ def init_db():
     """)
 
     # 既存DBへのカラム追加（ALTER TABLEは存在チェック不要、エラーを無視）
-    try:
-        cur.execute("ALTER TABLE predictions ADD COLUMN exacta_odds REAL")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # カラム既存
+    alter_columns = [
+        ("predictions", "exacta_odds", "REAL"),
+        ("race_payouts", "sanrentan_combo", "TEXT"),
+        ("race_payouts", "sanrentan_payout", "INTEGER"),
+        ("race_payouts", "sanrentan_popularity", "INTEGER"),
+    ]
+    for table, col, col_type in alter_columns:
+        try:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # カラム既存
 
     conn.commit()
     conn.close()
@@ -247,12 +254,15 @@ def insert_payout(conn: sqlite3.Connection, payout: dict):
     conn.execute("""
         INSERT OR REPLACE INTO race_payouts
         (race_id, nisyatan_combo, nisyatan_payout, nisyatan_popularity,
-         nishafuku_combo, nishafuku_payout)
-        VALUES (?, ?, ?, ?, ?, ?)
+         nishafuku_combo, nishafuku_payout,
+         sanrentan_combo, sanrentan_payout, sanrentan_popularity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         payout["race_id"], payout.get("nisyatan_combo"),
         payout.get("nisyatan_payout"), payout.get("nisyatan_popularity"),
         payout.get("nishafuku_combo"), payout.get("nishafuku_payout"),
+        payout.get("sanrentan_combo"), payout.get("sanrentan_payout"),
+        payout.get("sanrentan_popularity"),
     ))
 
 
