@@ -542,6 +542,55 @@ class KeirinScraper:
 
         return result
 
+    def scrape_exacta_odds(self, race_id: str) -> dict[str, float]:
+        """2連単（Exacta）オッズをAPI経由で取得
+
+        戻り値: {"XXYY": odds, ...}  XX=1着車番, YY=2着車番（ゼロパディング2桁）
+        例: {"0102": 3.7, "0103": 5.2, ...}
+        取得失敗時は空dict
+        """
+        cache_key = f"exacta_odds_{race_id}"
+        cached = self._get_json_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        url = (
+            f"{NETKEIRIN_BASE_URL}/api/race/"
+            f"?class=AplRaceOdds&method=get&race_id={race_id}&compress=0"
+        )
+        try:
+            time.sleep(SCRAPE_DELAY)
+            resp = self.session.get(url, timeout=30, headers={
+                **REQUEST_HEADERS,
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"{NETKEIRIN_BASE_URL}/race/odds/",
+            })
+            data = resp.json()
+            if data.get("status") != "OK":
+                logger.debug("Odds API NG for %s: %s", race_id, data.get("reason", ""))
+                return {}
+
+            odds_key = f"nkrace_odds::{race_id}"
+            odds_data = data.get("data", {}).get(odds_key, {})
+            list_6 = odds_data.get("list_6", [])  # 2連単
+
+            result = {}
+            for item in list_6:
+                combo = item[0]   # "XXYY"
+                try:
+                    odds_val = float(item[1])
+                except (ValueError, IndexError):
+                    continue
+                result[combo] = odds_val
+
+            self._set_json_cache(cache_key, result)
+            return result
+
+        except Exception as e:
+            logger.debug("Odds fetch error for %s: %s", race_id, e)
+            return {}
+
     @staticmethod
     def _safe_int(text: str) -> int | None:
         try:

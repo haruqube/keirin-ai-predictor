@@ -1300,7 +1300,7 @@ body {
     try {
       const { data, error } = await sb
         .from("prediction_detail")
-        .select("race_id, velodrome, race_number, grade, start_time, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, confidence, finish_position")
+        .select("race_id, velodrome, race_number, grade, start_time, rider_id, rider_name, bike_number, predicted_score, predicted_rank, mark, confidence, exacta_odds, finish_position")
         .eq("race_date", today)
         .order("race_id")
         .order("predicted_rank");
@@ -1317,12 +1317,16 @@ body {
         // 信頼度 = ◎-○ スコア差（confidenceフィールド、fallback: 直接計算）
         var gap = sorted[0].confidence;
         if (gap == null) gap = (sorted[0].predicted_score || 0) - (sorted[1].predicted_score || 0);
+        // トリガミ判定: rank2-5の全オッズが4.0未満なら確実に損
+        var comboOdds = sorted.slice(1, 5).map(function(r) { return r.exacta_odds; }).filter(function(v) { return v != null; });
+        var isTorigami = comboOdds.length > 0 && Math.max.apply(null, comboOdds) < 4.0;
+        var maxOdds = comboOdds.length > 0 ? Math.max.apply(null, comboOdds) : null;
         // F2は賭け対象外（バックテストで回収率64.5%）
         if ((gap >= 1.10 || (gap >= 0.50 && gap < 0.80)) && rows[0].grade !== 'F2') {
           _recData.push({
             id: id, velodrome: rows[0].velodrome, raceNumber: rows[0].race_number,
             grade: rows[0].grade, startTime: rows[0].start_time || '', gap: gap, isHigh: gap >= 1.10,
-            top5: sorted.slice(0, 5)
+            top5: sorted.slice(0, 5), isTorigami: isTorigami, maxOdds: maxOdds
           });
         }
       }
@@ -1400,10 +1404,12 @@ body {
       var timeStr = r.startTime ? '<span style="color:' + (expired ? '#94a3b8' : 'var(--muted)') + ';font-size:11px;margin-left:6px">' + r.startTime + '</span>' : '';
 
       var cardStyle = expired ? ' style="opacity:0.4;pointer-events:auto"' : '';
+      if (r.isTorigami && !expired) cardStyle = ' style="border-left:3px solid #f59e0b"';
       var c = '<div class="rec-full-card ' + lvlCls + '" data-raceid="' + r.id + '"' + cardStyle + '>';
       c += '<div class="rec-full-top">';
       c += '<span class="rec-full-venue">' + r.velodrome + ' ' + r.raceNumber + 'R ' + gradeBadge(r.grade) + timeStr;
       if (expired) c += ' <span style="font-size:10px;color:#94a3b8;font-weight:500">締切</span>';
+      if (r.isTorigami && !expired) c += ' <span style="font-size:10px;color:#f59e0b;font-weight:700">トリガミ注意</span>';
       c += '</span>';
       c += '<span class="rec-full-score" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + r.gap.toFixed(2) + '</span>';
       c += '<span class="rec-full-level" style="background:' + (expired ? '#94a3b8' : lvlBg) + '">' + lvlLabel + '</span>';
@@ -1417,13 +1423,17 @@ body {
       c += '<span class="rec-full-targets">\u2192 ';
       for (var i = 1; i < Math.min(5, r.top5.length); i++) {
         if (i > 1) c += ' ';
+        var oddsVal = r.top5[i].exacta_odds;
+        var oddsColor = oddsVal != null && oddsVal < 4.0 ? '#f59e0b' : (expired ? '#94a3b8' : 'var(--text)');
         c += bikeCircle(r.top5[i].bike_number);
+        if (oddsVal != null) c += '<span style="font-size:10px;color:' + oddsColor + ';margin-right:4px">' + oddsVal.toFixed(1) + 'x</span>';
       }
       c += '</span>';
       c += '</div>';
       c += '<div class="rec-full-bet">';
       c += '<span class="rec-full-bet-label">2\u9023\u5358\u25CE1\u7740\u56FA\u5B9A4\u70B9:</span>';
       c += '<span class="rec-full-bet-amount" style="color:' + (expired ? '#94a3b8' : lvlBg) + '">' + betAmount + ' = ' + betTotal + '</span>';
+      if (r.maxOdds != null) c += '<span style="font-size:10px;color:var(--muted);margin-left:6px">max ' + r.maxOdds.toFixed(1) + 'x</span>';
       c += '</div>';
       c += '</div>';
       return c;

@@ -61,7 +61,7 @@ TABLE_COLUMNS = {
     ],
     "predictions": [
         "race_id", "rider_id", "predicted_score", "predicted_rank",
-        "mark", "confidence",
+        "mark", "confidence", "exacta_odds",
     ],
     "prediction_results": [
         "race_id", "predicted_top1", "predicted_top3", "actual_top1",

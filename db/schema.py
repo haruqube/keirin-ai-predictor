@@ -123,6 +123,7 @@ def init_db():
         predicted_rank INTEGER,
         mark TEXT,
         confidence REAL,
+        exacta_odds REAL,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (race_id) REFERENCES races(race_id),
         UNIQUE(race_id, rider_id)
@@ -164,6 +165,13 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_predictions_race ON predictions(race_id);
     CREATE INDEX IF NOT EXISTS idx_rider_stats_rider ON rider_stats(rider_id);
     """)
+
+    # 既存DBへのカラム追加（ALTER TABLEは存在チェック不要、エラーを無視）
+    try:
+        cur.execute("ALTER TABLE predictions ADD COLUMN exacta_odds REAL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # カラム既存
 
     conn.commit()
     conn.close()
@@ -251,11 +259,12 @@ def insert_payout(conn: sqlite3.Connection, payout: dict):
 def insert_prediction(conn: sqlite3.Connection, pred: dict):
     conn.execute("""
         INSERT OR REPLACE INTO predictions
-        (race_id, rider_id, predicted_score, predicted_rank, mark, confidence)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (race_id, rider_id, predicted_score, predicted_rank, mark, confidence, exacta_odds)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         pred["race_id"], pred["rider_id"], pred.get("predicted_score"),
         pred.get("predicted_rank"), pred.get("mark"), pred.get("confidence"),
+        pred.get("exacta_odds"),
     ))
 
 

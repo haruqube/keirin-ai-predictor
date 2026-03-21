@@ -274,9 +274,31 @@ def predict_races(date: str, velodromes: str = "major"):
             class_map = {e["rider_id"]: e.get("class", "") for e in entries if e.get("rider_id")}
             bike_map = {e["rider_id"]: e.get("bike_number", "") for e in entries if e.get("rider_id")}
 
+            # 2連単オッズ取得（◎→○,▲,△,△ の4点）
+            exacta_odds_map = {}  # rider_id → exacta_odds
+            torigami_warn = ""
+            if gap_label in ("HIGH", "MED"):
+                odds_data = scraper.scrape_exacta_odds(race_id)
+                if odds_data:
+                    honmei_bike = bike_map.get(df.iloc[0]["rider_id"], "")
+                    if honmei_bike:
+                        honmei_str = str(honmei_bike).zfill(2)
+                        combo_odds = []
+                        for rank_i in range(1, min(5, len(df))):
+                            target_rid = df.iloc[rank_i]["rider_id"]
+                            target_bike = str(bike_map.get(target_rid, "")).zfill(2)
+                            combo_key = f"{honmei_str}{target_bike}"
+                            odds_val = odds_data.get(combo_key)
+                            if odds_val is not None:
+                                exacta_odds_map[target_rid] = odds_val
+                                combo_odds.append(odds_val)
+                        # トリガミ判定: 全4点のオッズが4.0未満なら確実に損
+                        if combo_odds and max(combo_odds) < 4.0:
+                            torigami_warn = " *** トリガミ注意 ***"
+
             print(f"\n{'='*50}")
             print(f"  {velodrome} {rnum}R")
-            print(f"  信頼度: {score_gap:.2f} ({gap_label}) → {bet_rec}")
+            print(f"  信頼度: {score_gap:.2f} ({gap_label}) → {bet_rec}{torigami_warn}")
             print(f"{'='*50}")
 
             for i, row in df.iterrows():
@@ -287,7 +309,12 @@ def predict_races(date: str, velodromes: str = "major"):
                 rider_class = class_map.get(rider_id, "")
                 bike_num = bike_map.get(rider_id, "")
 
-                print(f"  {mark} {bike_num}番 {rider_name} ({rider_class}) score={row['pred_score']:.3f}")
+                odds_str = ""
+                e_odds = exacta_odds_map.get(rider_id)
+                if e_odds is not None:
+                    odds_str = f" odds={e_odds:.1f}x"
+
+                print(f"  {mark} {bike_num}番 {rider_name} ({rider_class}) score={row['pred_score']:.3f}{odds_str}")
 
                 insert_prediction(conn, {
                     "race_id": race_id,
@@ -296,6 +323,7 @@ def predict_races(date: str, velodromes: str = "major"):
                     "predicted_rank": rank,
                     "mark": mark,
                     "confidence": score_gap,
+                    "exacta_odds": e_odds,
                 })
 
                 all_predictions.append({
