@@ -253,7 +253,13 @@ def predict_races(date: str, velodromes: str = "major"):
             if len(df) >= 2:
                 score_gap = df.iloc[0]["pred_score"] - df.iloc[1]["pred_score"]
 
-            if score_gap >= 0.89:
+            # F2レースは賭け対象外（バックテストで回収率64.5%）
+            race_grade = entry_data.get("grade", "")
+            is_f2 = (race_grade == "F2")
+
+            if is_f2:
+                gap_label, bet_rec = "SKIP", "見送り（F2）"
+            elif score_gap >= 0.89:
                 gap_label, bet_rec = "HIGH", "500円×4点=2,000円"
             elif score_gap >= 0.35:
                 gap_label, bet_rec = "MED", "100円×4点=400円"
